@@ -1,0 +1,2965 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>FinPlan — Multi-Asset Tracker &amp; Goal Planner</title>
+
+<!-- PWA / "Install as Android app" support -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0b1220">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="FinPlan">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+:root{
+  --bg:#0b1220; --bg-soft:#101a2c; --panel:#0f1830; --panel-2:#141f3c;
+  --card:#111b33; --card-border:#1f2c4d;
+  --text:#e7ecf7; --text-dim:#9aa7c7; --text-faint:#6b7699;
+  --accent:#2dd4bf; --accent-2:#38bdf8; --accent-soft:rgba(45,212,191,.14);
+  --good:#34d399; --bad:#f87171; --warn:#fbbf24;
+  --equity:#38bdf8; --debt:#2dd4bf; --hybrid:#a78bfa; --gold:#fbbf24; --other:#94a3b8; --bond:#c08e91;
+  --radius:14px; --radius-sm:8px;
+  --shadow: 0 8px 24px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box;}
+html,body{height:100%;}
+body{
+  margin:0; background:radial-gradient(1200px 800px at 10% -10%, #16233f 0%, var(--bg) 55%) fixed;
+  color:var(--text); font-family:'Segoe UI',-apple-system,BlinkMacSystemFont,Roboto,Helvetica,Arial,sans-serif;
+  font-size:14px; line-height:1.5;
+}
+::-webkit-scrollbar{width:10px;height:10px;}
+::-webkit-scrollbar-thumb{background:#26355c;border-radius:8px;}
+::-webkit-scrollbar-track{background:transparent;}
+
+a{color:var(--accent-2);}
+button{font-family:inherit;}
+
+/* ---------- Mobile top bar (hidden on desktop) ---------- */
+.mobile-topbar{
+  display:none; align-items:center; justify-content:space-between;
+  position:sticky; top:0; z-index:70; background:var(--panel);
+  border-bottom:1px solid var(--card-border); padding:12px 14px;
+}
+.mobile-topbar .brand{padding:0;}
+.mobile-topbar .brand-mark{width:28px;height:28px;font-size:13px;border-radius:8px;}
+.mobile-topbar .brand-name{font-size:14.5px;}
+.hamburger-btn{
+  width:38px; height:38px; border-radius:9px; border:1px solid var(--card-border); background:var(--card);
+  color:var(--text); font-size:18px; display:flex; align-items:center; justify-content:center; cursor:pointer;
+}
+.sidebar-backdrop{display:none; position:fixed; inset:0; background:rgba(4,8,20,.6); z-index:80;}
+.sidebar-backdrop.open{display:block;}
+
+/* ---------- Layout ---------- */
+.app{display:flex; min-height:100vh;}
+.sidebar{
+  width:230px; flex-shrink:0; background:linear-gradient(180deg,var(--panel),var(--panel-2));
+  border-right:1px solid var(--card-border); padding:20px 14px; position:sticky; top:0; height:100vh;
+  overflow-y:auto;
+}
+.brand{display:flex; align-items:center; gap:10px; padding:6px 8px 22px;}
+.brand-mark{
+  width:34px;height:34px;border-radius:10px;
+  background:conic-gradient(from 220deg, var(--accent), var(--accent-2), var(--hybrid), var(--accent));
+  display:flex;align-items:center;justify-content:center;font-weight:800;color:#04121a;font-size:15px;
+}
+.brand-name{font-weight:700; font-size:16px; letter-spacing:.2px;}
+.brand-sub{font-size:11px; color:var(--text-faint); margin-top:1px;}
+
+.nav-item{
+  display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:10px; margin-bottom:4px;
+  color:var(--text-dim); cursor:pointer; font-size:13.5px; font-weight:500; user-select:none;
+  border:1px solid transparent;
+}
+.nav-item:hover{background:rgba(255,255,255,.04); color:var(--text);}
+.nav-item.active{background:var(--accent-soft); color:var(--accent); border-color:rgba(45,212,191,.3);}
+.nav-icon{width:18px;text-align:center;font-size:15px;}
+
+.sidebar-footer{position:absolute; bottom:18px; left:14px; right:14px; font-size:11px; color:var(--text-faint);}
+.privacy-pill{
+  display:flex; gap:8px; align-items:flex-start; background:rgba(45,212,191,.08);
+  border:1px solid rgba(45,212,191,.2); border-radius:10px; padding:10px; margin-top:14px;
+}
+
+.main{flex:1; min-width:0; padding:26px 30px 60px;}
+.topbar{display:flex; align-items:center; justify-content:space-between; margin-bottom:22px; flex-wrap:wrap; gap:12px;}
+.page-title{font-size:22px; font-weight:700;}
+.page-sub{color:var(--text-dim); font-size:13px; margin-top:2px;}
+
+.btn{
+  border:1px solid var(--card-border); background:var(--card); color:var(--text);
+  padding:9px 14px; border-radius:10px; cursor:pointer; font-size:13px; font-weight:600;
+  display:inline-flex; align-items:center; gap:7px; transition:all .15s;
+}
+.btn:hover{border-color:var(--accent); color:var(--accent);}
+.btn-primary{background:linear-gradient(135deg,var(--accent),var(--accent-2)); color:#04121a; border:none;}
+.btn-primary:hover{filter:brightness(1.08); color:#04121a;}
+.btn-danger{border-color:rgba(248,113,113,.4); color:var(--bad);}
+.btn-danger:hover{background:rgba(248,113,113,.1); border-color:var(--bad); color:var(--bad);}
+.btn-sm{padding:6px 10px; font-size:12px; border-radius:8px;}
+.btn-ghost{background:transparent; border-color:transparent; color:var(--text-dim);}
+.btn-ghost:hover{color:var(--text); background:rgba(255,255,255,.04);}
+
+.tabbar{display:flex; gap:6px; margin-bottom:18px; border-bottom:1px solid var(--card-border); flex-wrap:wrap;}
+.tab{padding:9px 14px; font-size:13px; font-weight:600; color:var(--text-dim); cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px;}
+.tab.active{color:var(--accent); border-color:var(--accent);}
+
+/* ---------- Cards / grid ---------- */
+.grid{display:grid; gap:16px;}
+.grid-4{grid-template-columns:repeat(4,1fr);}
+.grid-3{grid-template-columns:repeat(3,1fr);}
+.grid-2{grid-template-columns:repeat(2,1fr);}
+@media (max-width:1100px){.grid-4{grid-template-columns:repeat(2,1fr);} .grid-3{grid-template-columns:repeat(2,1fr);}}
+@media (max-width:720px){.grid-4,.grid-3,.grid-2{grid-template-columns:1fr;} .main{padding:16px;}}
+
+/* ---------- Mobile drawer behavior ---------- */
+@media (max-width:860px){
+  .mobile-topbar{display:flex;}
+  .sidebar{
+    position:fixed; top:0; left:0; width:min(84vw, 300px); height:100%;
+    transform:translateX(-100%); transition:transform .25s ease; z-index:90;
+    box-shadow:0 0 50px rgba(0,0,0,.6);
+  }
+  .sidebar.open{transform:translateX(0);}
+  .main{padding:16px;}
+  .page-title{font-size:19px;}
+  .stat-value{font-size:20px;}
+  .card{padding:14px;}
+  .modal-overlay{padding:16px;align-items:center;}
+  .modal{padding:16px;}
+  .icon-btn{padding:8px 9px; font-size:15px;}
+}
+@media (max-width:420px){
+  .grid-4, .grid-3, .grid-2{grid-template-columns:1fr;}
+  .stat-value{font-size:19px;}
+  .btn{padding:9px 12px; font-size:12.5px;}
+}
+
+
+.card{
+  background:linear-gradient(180deg,var(--card),rgba(17,27,51,.6));
+  border:1px solid var(--card-border); border-radius:var(--radius); padding:18px;
+  box-shadow:var(--shadow);
+}
+.card-title{font-size:13px; color:var(--text-dim); font-weight:600; text-transform:uppercase; letter-spacing:.5px; margin-bottom:8px;}
+.stat-value{font-size:24px; font-weight:800; letter-spacing:-.3px;}
+.stat-sub{font-size:12.5px; margin-top:6px; color:var(--text-dim);}
+.pos{color:var(--good);} .neg{color:var(--bad);}
+
+.section-title{font-size:16px; font-weight:700; margin:26px 0 12px;}
+.section-title:first-child{margin-top:0;}
+
+/* ---------- Table ---------- */
+.table-wrap{overflow-x:auto; border-radius:var(--radius); border:1px solid var(--card-border);}
+table{width:100%; border-collapse:collapse; font-size:13px; min-width:640px;}
+thead th{
+  text-align:left; padding:11px 14px; background:var(--panel-2); color:var(--text-dim);
+  font-weight:600; font-size:11.5px; text-transform:uppercase; letter-spacing:.4px;
+  border-bottom:1px solid var(--card-border); white-space:nowrap;
+}
+tbody td{padding:11px 14px; border-bottom:1px solid var(--card-border); white-space:nowrap;}
+tbody tr:last-child td{border-bottom:none;}
+tbody tr:hover{background:rgba(255,255,255,.02);}
+.badge{
+  display:inline-flex; align-items:center; padding:3px 9px; border-radius:999px; font-size:11px; font-weight:700;
+}
+.badge-equity{background:rgba(56,189,248,.15); color:var(--equity);}
+.badge-debt{background:rgba(45,212,191,.15); color:var(--debt);}
+.badge-hybrid{background:rgba(167,139,250,.15); color:var(--hybrid);}
+.badge-gold{background:rgba(251,191,36,.15); color:var(--gold);}
+.badge-stock{background:rgba(56,189,248,.15); color:var(--equity);}
+.badge-fd{background:rgba(45,212,191,.15); color:var(--debt);}
+.badge-bond{background:rgba(192,142,145,.16); color:var(--bond);}
+.badge-us-stock{background:rgba(249,115,22,.15); color:#f97316;}
+.fx-hint{font-size:11.5px; color:var(--text-faint);}
+.native-amt{font-size:11px; color:var(--text-faint); display:block; margin-top:2px;}
+.cell-value{display:inline-flex; flex-direction:column; align-items:flex-end;}
+
+/* ---------- Responsive holdings table (Dashboard) ---------- */
+/* Below the breakpoint, each row becomes a stacked card instead of a scrolling table. */
+@media (max-width:720px){
+  #holdings-table.responsive-table{border:none; overflow:visible;}
+  #holdings-table.responsive-table table{min-width:0; width:100%;}
+  #holdings-table.responsive-table thead{display:none;}
+  #holdings-table.responsive-table tbody tr{
+    display:block; margin:10px; border:1px solid var(--card-border); border-radius:12px;
+    background:var(--card); overflow:hidden;
+  }
+  #holdings-table.responsive-table tbody tr:last-child{margin-bottom:10px;}
+  #holdings-table.responsive-table tbody td{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:9px 14px; border-bottom:1px dashed var(--card-border); white-space:normal; text-align:right;
+  }
+  #holdings-table.responsive-table tbody td:last-child{border-bottom:none;}
+  #holdings-table.responsive-table tbody td::before{
+    content:attr(data-label); font-size:11px; font-weight:700; color:var(--text-dim);
+    text-transform:uppercase; letter-spacing:.4px; text-align:left; flex-shrink:0;
+  }
+  #holdings-table.responsive-table tbody td[data-label="Asset"]{
+    background:var(--panel-2); font-weight:700; font-size:14px; justify-content:flex-start;
+  }
+  #holdings-table.responsive-table tbody td[data-label="Asset"]::before{display:none;}
+  #holdings-table.responsive-table .native-amt{text-align:right;}
+}
+.badge-income-interest{background:rgba(45,212,191,.15); color:var(--debt);}
+.badge-income-dividend{background:rgba(167,139,250,.15); color:var(--hybrid);}
+.acct-tag{display:inline-flex; align-items:center; gap:6px; font-size:12.5px; color:var(--text-dim); font-weight:600;}
+.acct-dot{width:8px; height:8px; border-radius:50%; display:inline-block; flex-shrink:0;}
+.icon-btn{background:none;border:none;color:var(--text-faint);cursor:pointer;font-size:14px;padding:4px 6px;border-radius:6px;}
+.icon-btn:hover{color:var(--text); background:rgba(255,255,255,.06);}
+
+/* ---------- Forms ---------- */
+.form-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:14px;}
+@media (max-width:900px){.form-grid{grid-template-columns:repeat(2,1fr);}}
+@media (max-width:600px){.form-grid{grid-template-columns:1fr;}}
+.field label{display:block; font-size:12px; color:var(--text-dim); margin-bottom:6px; font-weight:600;}
+.field input, .field select, .field textarea{
+  width:100%; padding:9px 11px; border-radius:9px; border:1px solid var(--card-border);
+  background:var(--bg-soft); color:var(--text); font-size:13.5px; font-family:inherit;
+}
+.field input:focus, .field select:focus, .field textarea:focus{outline:none; border-color:var(--accent);}
+.field-hint{font-size:11px; color:var(--text-faint); margin-top:4px;}
+
+.modal-overlay{
+  position:fixed; inset:0; background:rgba(4,8,20,.6); backdrop-filter:blur(3px);
+  display:none; align-items:flex-start; justify-content:center; z-index:100; padding:40px 16px; overflow-y:auto;
+}
+.modal-overlay.open{display:flex;}
+.modal{
+  background:var(--panel); border:1px solid var(--card-border); border-radius:var(--radius);
+  width:100%; max-width:640px; padding:22px; box-shadow:0 20px 60px rgba(0,0,0,.5);
+}
+.modal-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;}
+.modal-head h3{font-size:17px; font-weight:700;}
+.modal-actions{display:flex; justify-content:flex-end; gap:10px; margin-top:20px;}
+
+.empty-state{
+  text-align:center; padding:50px 20px; color:var(--text-faint);
+}
+.empty-state .big-icon{font-size:38px; margin-bottom:10px; opacity:.6;}
+
+.toast{
+  position:fixed; bottom:22px; right:22px; background:var(--panel-2); border:1px solid var(--card-border);
+  padding:12px 18px; border-radius:10px; box-shadow:var(--shadow); font-size:13px; z-index:200;
+  display:flex; align-items:center; gap:10px; transform:translateY(20px); opacity:0; transition:all .25s;
+}
+.toast.show{transform:translateY(0); opacity:1;}
+
+.chart-box{position:relative; height:260px;}
+.chart-box-sm{position:relative; height:180px;}
+
+.two-col{display:grid; grid-template-columns:1.3fr .9fr; gap:16px;}
+@media (max-width:900px){.two-col{grid-template-columns:1fr;}}
+
+.goal-card{margin-bottom:16px;}
+.goal-progress-track{height:10px; background:var(--bg-soft); border-radius:6px; overflow:hidden; margin:10px 0;}
+.goal-progress-fill{height:100%; background:linear-gradient(90deg,var(--accent),var(--accent-2)); border-radius:6px;}
+.kv-row{display:flex; justify-content:space-between; padding:6px 0; font-size:13px; border-bottom:1px dashed var(--card-border);}
+.kv-row:last-child{border-bottom:none;}
+.kv-row .k{color:var(--text-dim);}
+.kv-row .v{font-weight:700;}
+
+.pill-toggle{display:flex; gap:6px; background:var(--bg-soft); padding:4px; border-radius:10px; border:1px solid var(--card-border); width:fit-content;}
+.pill-toggle button{border:none; background:transparent; color:var(--text-dim); padding:6px 12px; border-radius:8px; cursor:pointer; font-size:12.5px; font-weight:600;}
+.pill-toggle button.active{background:var(--accent); color:#04121a;}
+
+textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,monospace !important; font-size:12.5px !important;}
+
+.dropzone{
+  border:1.5px dashed var(--card-border); border-radius:12px; padding:26px; text-align:center; color:var(--text-dim);
+  cursor:pointer; transition:all .15s;
+}
+.dropzone:hover{border-color:var(--accent); color:var(--accent);}
+
+.muted-link{color:var(--text-dim); cursor:pointer; font-size:12.5px; text-decoration:underline;}
+.muted-link:hover{color:var(--accent);}
+
+.warn-box{
+  background:rgba(251,191,36,.08); border:1px solid rgba(251,191,36,.3); border-radius:10px; padding:12px 14px;
+  font-size:12.5px; color:#fde68a; margin-bottom:16px; display:flex; gap:10px;
+}
+.danger-box{
+  background:rgba(248,113,113,.08); border:1px solid rgba(248,113,113,.3); border-radius:10px; padding:16px; margin-top:10px;
+}
+</style>
+</head>
+<body>
+
+<div class="mobile-topbar">
+  <button class="hamburger-btn" onclick="toggleSidebar()" aria-label="Open menu">☰</button>
+  <div class="brand">
+    <div class="brand-mark">F</div>
+    <div class="brand-name">FinPlan</div>
+  </div>
+  <div style="width:38px;"></div>
+</div>
+<div class="sidebar-backdrop" id="sidebar-backdrop" onclick="closeSidebar()"></div>
+
+<div class="app">
+  <!-- SIDEBAR -->
+  <div class="sidebar" id="app-sidebar">
+    <div class="brand">
+      <div class="brand-mark">F</div>
+      <div>
+        <div class="brand-name">FinPlan</div>
+        <div class="brand-sub">local &amp; private</div>
+      </div>
+    </div>
+
+    <div style="margin-bottom:16px;">
+      <label style="color:var(--text-faint); font-size:10.5px; text-transform:uppercase; letter-spacing:.6px; font-weight:700; display:block; margin-bottom:6px; padding:0 2px;">Viewing</label>
+      <select id="account-switcher" onchange="onAccountSwitch()" style="width:100%; padding:8px 10px; border-radius:9px; border:1px solid var(--card-border); background:var(--bg-soft); color:var(--text); font-size:13px; font-weight:600;"></select>
+    </div>
+
+    <div style="margin-bottom:16px;">
+      <label style="color:var(--text-faint); font-size:10.5px; text-transform:uppercase; letter-spacing:.6px; font-weight:700; display:block; margin-bottom:6px; padding:0 2px;">Display currency</label>
+      <div class="pill-toggle" id="currency-toggle" style="width:100%;">
+        <button data-cur="INR" onclick="setDisplayCurrency('INR')" style="flex:1;">₹ INR</button>
+        <button data-cur="USD" onclick="setDisplayCurrency('USD')" style="flex:1;">$ USD</button>
+      </div>
+      <div class="fx-hint" id="sidebar-fx-hint" style="margin-top:6px; padding:0 2px;"></div>
+    </div>
+
+    <div class="nav-item active" data-tab="dashboard"><span class="nav-icon">▦</span> Dashboard</div>
+    <div class="nav-item" data-tab="transactions"><span class="nav-icon">≡</span> Transactions</div>
+    <div class="nav-item" data-tab="assets"><span class="nav-icon">◆</span> Assets</div>
+    <div class="nav-item" data-tab="accounts"><span class="nav-icon">◐</span> Accounts</div>
+    <div class="nav-item" data-tab="goals"><span class="nav-icon">◎</span> Goals</div>
+    <div class="nav-item" data-tab="income"><span class="nav-icon">₹</span> Interest &amp; Dividends</div>
+    <div class="nav-item" data-tab="fyreport"><span class="nav-icon">▤</span> FY Report</div>
+    <div class="nav-item" data-tab="navupdate"><span class="nav-icon">↻</span> NAV / Price Update</div>
+    <div class="nav-item" data-tab="settings"><span class="nav-icon">⚙</span> Settings &amp; Backup</div>
+
+    <div class="privacy-pill">
+      <span>🔒</span>
+      <span>Export a JSON backup regularly.</span>
+    </div>
+    <button class="btn" id="btn-install-app" style="width:100%; margin-top:10px; justify-content:center; display:none;" onclick="triggerInstallPrompt()">📲 Install as app</button>
+    <div class="sidebar-footer">FinPlan · v1.0</div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main">
+
+    <!-- DASHBOARD -->
+    <div id="page-dashboard" class="page">
+      <div class="topbar">
+        <div>
+          <div class="page-title">Dashboard</div>
+          <div class="page-sub">Holdings, allocation, gains and XIRR across all your assets</div>
+        </div>
+        <div style="display:flex; gap:10px;">
+          <button class="btn" id="btn-sample-data">Load sample data</button>
+          <button class="btn btn-primary" onclick="openTxnModal()">+ Add transaction</button>
+        </div>
+      </div>
+
+      <div class="grid grid-4" id="dashboard-stats"></div>
+
+      <div class="two-col" style="margin-top:16px;">
+        <div class="card">
+          <div class="card-title">Holdings</div>
+          <div class="table-wrap responsive-table" id="holdings-table"></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Allocation</div>
+          <div class="chart-box"><canvas id="chart-allocation"></canvas></div>
+        </div>
+      </div>
+
+      <div class="section-title">Recent transactions</div>
+      <div class="table-wrap" id="recent-txns"></div>
+    </div>
+
+    <!-- TRANSACTIONS -->
+    <div id="page-transactions" class="page" style="display:none;">
+      <div class="topbar">
+        <div>
+          <div class="page-title">Transactions</div>
+          <div class="page-sub">Mutual funds, fixed deposits and stocks — manual entry or bulk import</div>
+        </div>
+        <div style="display:flex; gap:10px;">
+          <button class="btn" onclick="openBulkImportModal()">⇪ Bulk import (CSV)</button>
+          <button class="btn btn-primary" onclick="openTxnModal()">+ Add transaction</button>
+        </div>
+      </div>
+      <div class="table-wrap" id="all-txns-table"></div>
+    </div>
+
+    <!-- ASSETS -->
+    <div id="page-assets" class="page" style="display:none;">
+      <div class="topbar">
+        <div>
+          <div class="page-title">Assets</div>
+          <div class="page-sub">Register the mutual funds, stocks and FDs you hold — transactions reference these</div>
+        </div>
+        <button class="btn btn-primary" onclick="openAssetModal()">+ Add asset</button>
+      </div>
+      <div class="table-wrap" id="assets-table"></div>
+    </div>
+
+    <!-- ACCOUNTS -->
+    <div id="page-accounts" class="page" style="display:none;">
+      <div class="topbar">
+        <div>
+          <div class="page-title">Accounts</div>
+          <div class="page-sub">Track a family's portfolios separately — Self, Spouse, Child, Parents — while still seeing a consolidated view</div>
+        </div>
+        <button class="btn btn-primary" onclick="openAccountModal()">+ Add account</button>
+      </div>
+      <div class="table-wrap" id="accounts-table"></div>
+    </div>
+
+    <!-- GOALS -->
+    <div id="page-goals" class="page" style="display:none;">
+      <div class="topbar">
+        <div>
+          <div class="page-title">Goals</div>
+          <div class="page-sub">Plan first, invest next — set a target and see the SIP needed, with an equity glide path</div>
+        </div>
+        <button class="btn btn-primary" onclick="openGoalModal()">+ Add goal</button>
+      </div>
+      <div id="goals-list"></div>
+    </div>
+
+    <!-- INCOME (Interest & Dividends) -->
+    <div id="page-income" class="page" style="display:none;">
+      <div class="topbar">
+        <div>
+          <div class="page-title">Interest &amp; Dividend Income</div>
+          <div class="page-sub">Coupon interest from bonds and FDs, dividends from mutual funds and stocks — all in one place</div>
+        </div>
+      </div>
+
+      <div class="grid grid-3" id="income-stats"></div>
+
+      <div class="grid grid-2" style="margin-top:16px;">
+        <div class="card">
+          <div class="card-title">Dividend &amp; Interest by Financial Year</div>
+          <div class="chart-box-sm"><canvas id="chart-income-fy"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-title">This Financial Year, month-wise <span id="current-fy-label" style="color:var(--text-faint); font-weight:500; text-transform:none; letter-spacing:0;"></span></div>
+          <div class="chart-box-sm"><canvas id="chart-income-current-fy"></canvas></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:16px;">
+        <div class="card-title">Income by asset</div>
+        <div class="table-wrap" id="income-by-asset-table"></div>
+      </div>
+
+      <div class="section-title">All income transactions</div>
+      <div class="table-wrap" id="income-table"></div>
+    </div>
+
+    <!-- FY REPORT -->
+    <div id="page-fyreport" class="page" style="display:none;">
+      <div class="topbar">
+        <div>
+          <div class="page-title">Financial Year Report</div>
+          <div class="page-sub">April–March summary: opening/closing value, net investment, realised gains, and income — ready to download</div>
+        </div>
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <select id="fy-select" onchange="renderFyReportPage()" style="padding:9px 12px; border-radius:10px; border:1px solid var(--card-border); background:var(--bg-soft); color:var(--text); font-size:13px; font-weight:600;"></select>
+          <button class="btn" onclick="downloadFyReportCSV()">⬇ CSV</button>
+          <button class="btn btn-primary" onclick="downloadFyReportPDF()">⬇ PDF Report</button>
+        </div>
+      </div>
+
+      <div class="warn-box">⚠ Historical NAVs aren't stored — valuations for past dates use the most recent transaction price on or before that date (or current price for today). Realised-gain classification (short vs long term) uses a simple 365-day rule as a general indicator only, not tax advice — actual rules vary by asset class and can include indexation/grandfathering. Please verify with your CAS/AIS/tax advisor before filing.</div>
+
+      <div class="grid grid-4" id="fy-summary-stats"></div>
+
+      <div class="section-title">Asset-wise movement</div>
+      <div class="table-wrap" id="fy-asset-table"></div>
+
+      <div class="section-title">Realised capital gains (indicative, FIFO)</div>
+      <div class="table-wrap" id="fy-capgains-table"></div>
+
+      <div class="section-title">Interest &amp; dividend income this year</div>
+      <div class="two-col">
+        <div class="table-wrap" id="fy-income-table"></div>
+        <div class="card">
+          <div class="card-title">Interest vs Dividend split</div>
+          <div class="chart-box-sm"><canvas id="chart-fy-income-split"></canvas></div>
+        </div>
+      </div>
+
+      <div class="section-title">All transactions this year</div>
+      <div class="table-wrap" id="fy-txn-table"></div>
+    </div>
+
+    <!-- NAV UPDATE -->
+    <div id="page-navupdate" class="page" style="display:none;">
+      <div class="topbar">
+        <div>
+          <div class="page-title">NAV / Price update</div>
+          <div class="page-sub">Update current valuations manually, or paste a NAVALL.txt-style fallback file</div>
+        </div>
+      </div>
+
+      <div class="warn-box">⚠ This demo has no live internet fetch (browser sandbox). Update prices manually below, or paste NAV data in the NAVALL fallback format to bulk-update registered mutual funds.</div>
+
+      <div class="two-col">
+        <div class="card">
+          <div class="card-title">Update prices individually</div>
+          <div class="table-wrap" id="nav-update-table"></div>
+        </div>
+        <div class="card">
+          <div class="card-title">NAVALL.txt fallback bulk update</div>
+          <div class="field" style="margin-bottom:10px;">
+            <label>Paste lines as: Scheme Name; NAV</label>
+            <textarea id="navall-input" placeholder="HDFC Flexi Cap Fund; 145.32&#10;Axis Bluechip Fund; 62.10"></textarea>
+          </div>
+          <button class="btn btn-primary" onclick="applyNavAllUpload()">Apply update</button>
+          <div class="field-hint" style="margin-top:10px;">Matches by (case-insensitive) asset name. Unmatched lines are skipped and reported.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SETTINGS -->
+    <div id="page-settings" class="page" style="display:none;">
+      <div class="topbar">
+        <div>
+          <div class="page-title">Settings &amp; Backup</div>
+          <div class="page-sub">Your data only exists in this tab. Export often.</div>
+        </div>
+      </div>
+
+      <div class="grid grid-3">
+        <div class="card">
+          <div class="card-title">Currency &amp; exchange rate</div>
+          <p style="color:var(--text-dim); font-size:13px;">Used to convert US Stock holdings (and anything else priced in USD) into your chosen display currency across the whole app.</p>
+          <div class="field" style="margin-top:8px;">
+            <label>USD → INR rate</label>
+            <input type="number" id="settings-fx-rate" step="0.01" placeholder="e.g. 83.50">
+          </div>
+          <button class="btn btn-primary" style="margin-top:4px;" onclick="saveFxRate()">Save rate</button>
+          <div class="field-hint" style="margin-top:8px;">There's no live FX feed here — update this manually from time to time (e.g. from a search for "USD to INR").</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Export backup</div>
+          <p style="color:var(--text-dim); font-size:13px;">Download all transactions, assets, goals and settings as a single JSON file.</p>
+          <button class="btn btn-primary" onclick="exportJSON()">⬇ Export JSON backup</button>
+        </div>
+        <div class="card">
+          <div class="card-title">Restore backup</div>
+          <p style="color:var(--text-dim); font-size:13px;">Upload a previously exported JSON file to restore your data.</p>
+          <input type="file" id="import-file" accept=".json" style="display:none" onchange="importJSON(this.files[0])">
+          <button class="btn" onclick="document.getElementById('import-file').click()">⬆ Import JSON backup</button>
+        </div>
+      </div>
+
+      <div class="grid grid-3" style="margin-top:16px;">
+        <div class="card">
+          <div class="card-title">Export to Excel (CSV)</div>
+          <p style="color:var(--text-dim); font-size:13px;">Export holdings and transactions as CSV files for spreadsheet analysis.</p>
+          <button class="btn" onclick="exportHoldingsCSV()">⬇ Holdings CSV</button>
+          <button class="btn" style="margin-top:8px;" onclick="exportTxnsCSV()">⬇ Transactions CSV</button>
+        </div>
+      </div>
+
+      <div class="section-title" style="margin-top:24px;">Google Drive backup</div>
+      <div class="warn-box">⚠ Google sign-in only works when this app is opened over <strong>https://</strong> from a domain you've registered in your own free Google Cloud project (not from a local <code>file://</code> path). See the setup steps below — this is a one-time, five-minute setup that only you control; FinPlan never sees your Google account credentials.</div>
+
+      <div class="grid grid-2">
+        <div class="card">
+          <div class="card-title">1. One-time setup</div>
+          <p style="color:var(--text-dim); font-size:12.5px;">In <a href="https://console.cloud.google.com/" target="_blank" rel="noopener">Google Cloud Console</a>: create a project → enable the <strong>Google Drive API</strong> → create an <strong>OAuth Client ID</strong> (type: Web application) → add the URL you're hosting this file at (e.g. your GitHub Pages URL) under "Authorized JavaScript origins". Paste the Client ID below.</p>
+          <div class="field" style="margin-top:10px;">
+            <label>Google OAuth Client ID</label>
+            <input type="text" id="gdrive-client-id" placeholder="xxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.apps.googleusercontent.com">
+          </div>
+          <div class="field-hint">Only stored in this tab's memory (include it in your JSON backup notes if you don't want to retype it — see hint below).</div>
+        </div>
+        <div class="card">
+          <div class="card-title">2. Connect &amp; backup</div>
+          <div id="gdrive-status" style="font-size:13px; color:var(--text-dim); margin-bottom:12px;">Not connected</div>
+          <div style="display:flex; flex-wrap:wrap; gap:8px;">
+            <button class="btn btn-primary" id="btn-gdrive-connect" onclick="connectGoogleDrive()">Connect Google Drive</button>
+            <button class="btn" id="btn-gdrive-backup" onclick="backupToGoogleDrive()" disabled>⬆ Backup now</button>
+            <button class="btn" id="btn-gdrive-restore" onclick="openGoogleDriveRestoreModal()" disabled>⬇ Restore…</button>
+            <button class="btn btn-ghost" id="btn-gdrive-signout" onclick="signOutGoogleDrive()" style="display:none;">Sign out</button>
+          </div>
+          <div class="field-hint" style="margin-top:10px;">Uses the restricted <code>drive.file</code> scope — FinPlan can only see backup files it creates itself, never the rest of your Drive.</div>
+        </div>
+      </div>
+
+      <div class="section-title" style="margin-top:24px;">Auto backup</div>
+      <div class="warn-box">⚠ Auto-backup only runs while this tab stays open — it can't run in the background after you close it. It writes a single, continuously-updated file (not a new file every time), a few seconds after any change and again periodically as a safety net.</div>
+      <div class="grid grid-2">
+        <div class="card">
+          <div class="card-title">Auto-backup to Google Drive</div>
+          <p style="color:var(--text-dim); font-size:12.5px;">Requires Google Drive to be connected above. Keeps a single file, <code>finplan_autobackup.json</code>, up to date in your Drive.</p>
+          <div class="pill-toggle" id="autobackup-drive-toggle" style="margin:10px 0;">
+            <button data-val="off" onclick="setAutoBackupDrive(false)">Off</button>
+            <button data-val="on" onclick="setAutoBackupDrive(true)">On</button>
+          </div>
+          <div class="fx-hint" id="autobackup-drive-status">Not connected to Google Drive yet.</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Auto-backup to a local folder</div>
+          <p style="color:var(--text-dim); font-size:12.5px;">Pick a folder once — FinPlan keeps <code>finplan_autobackup.json</code> updated there directly, no repeated download prompts. Chrome/Edge on desktop only.</p>
+          <button class="btn" id="btn-choose-local-folder" onclick="chooseLocalBackupFolder()" style="margin-top:6px;">📁 Choose backup folder</button>
+          <div class="pill-toggle" id="autobackup-local-toggle" style="margin:10px 0; display:none;">
+            <button data-val="off" onclick="setAutoBackupLocal(false)">Off</button>
+            <button data-val="on" onclick="setAutoBackupLocal(true)">On</button>
+          </div>
+          <div class="fx-hint" id="autobackup-local-status"></div>
+        </div>
+      </div>
+
+      <div class="section-title" style="margin-top:24px;">Install as an app</div>
+      <div class="card">
+        <div class="card-title">Add FinPlan to your home screen</div>
+        <p style="color:var(--text-dim); font-size:13px;">On Android/Chrome, install it like a native app — it opens in its own window with an icon on your home screen, and keeps working offline for data you've already loaded.</p>
+        <button class="btn btn-primary" id="btn-install-app-settings" onclick="triggerInstallPrompt()" style="display:none;">📲 Install FinPlan</button>
+        <p id="install-fallback-note" style="color:var(--text-faint); font-size:12px; margin-top:8px;">If you don't see an install button, use your browser menu → "Add to Home screen" / "Install app" (this is normal on iOS Safari, and on Android when the app is opened directly from a file rather than a hosted link).</p>
+      </div>
+
+      <div class="card" style="margin-top:16px;">
+        <div class="card-title" style="color:var(--bad);">Danger zone</div>
+        <div class="danger-box">
+          <strong>Full local wipe</strong>
+          <p style="color:var(--text-dim); font-size:13px;">Permanently erases every asset, transaction, goal and setting in this session. This cannot be undone unless you have a JSON backup.</p>
+          <button class="btn btn-danger" onclick="confirmWipe()">Wipe all data</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ============ MODALS ============ -->
+
+<!-- Transaction Modal -->
+<div class="modal-overlay" id="modal-txn">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="txn-modal-title">Add transaction</h3>
+      <button class="icon-btn" onclick="closeModal('modal-txn')">✕</button>
+    </div>
+    <input type="hidden" id="txn-id">
+    <div class="form-grid">
+      <div class="field">
+        <label>Asset</label>
+        <select id="txn-asset" onchange="onTxnAssetChange()"></select>
+      </div>
+      <div class="field">
+        <label>Transaction type</label>
+        <select id="txn-type"></select>
+      </div>
+      <div class="field">
+        <label>Date</label>
+        <input type="date" id="txn-date">
+      </div>
+      <div class="field">
+        <label id="txn-amount-label">Amount (₹)</label>
+        <input type="number" id="txn-amount" step="0.01" placeholder="e.g. 10000">
+      </div>
+      <div class="field" id="txn-units-field">
+        <label id="txn-units-label">Units</label>
+        <input type="number" id="txn-units" step="0.0001" placeholder="auto if NAV known">
+      </div>
+      <div class="field" id="txn-navprice-field">
+        <label id="txn-navprice-label">NAV / Price</label>
+        <input type="number" id="txn-navprice" step="0.0001">
+      </div>
+      <div class="field" id="txn-rate-field" style="display:none;">
+        <label>Interest rate % p.a.</label>
+        <input type="number" id="txn-rate" step="0.01" placeholder="e.g. 7.1">
+      </div>
+      <div class="field" id="txn-tenure-field" style="display:none;">
+        <label>Tenure (months)</label>
+        <input type="number" id="txn-tenure" step="1" placeholder="e.g. 24">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('modal-txn')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveTxn()">Save transaction</button>
+    </div>
+  </div>
+</div>
+
+<!-- Asset Modal -->
+<div class="modal-overlay" id="modal-asset">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>Add asset</h3>
+      <button class="icon-btn" onclick="closeModal('modal-asset')">✕</button>
+    </div>
+    <input type="hidden" id="asset-id">
+    <div class="form-grid">
+      <div class="field">
+        <label>Name</label>
+        <input type="text" id="asset-name" placeholder="e.g. Parag Parikh Flexi Cap Fund">
+      </div>
+      <div class="field">
+        <label>Account</label>
+        <select id="asset-account"></select>
+      </div>
+      <div class="field">
+        <label>Type</label>
+        <select id="asset-type" onchange="onAssetTypeChange()">
+          <option value="equity_mf">Mutual Fund — Equity</option>
+          <option value="debt_mf">Mutual Fund — Debt</option>
+          <option value="hybrid_mf">Mutual Fund — Hybrid</option>
+          <option value="gold_mf">Mutual Fund / ETF — Gold</option>
+          <option value="gold">Gold (Physical / Digital, in grams)</option>
+          <option value="stock">Stock (India)</option>
+          <option value="us_stock">US Stock</option>
+          <option value="bond">Corporate Bond</option>
+          <option value="fd">Fixed Deposit</option>
+        </select>
+      </div>
+      <div class="field" id="asset-currency-field">
+        <label>Pricing currency</label>
+        <select id="asset-currency" onchange="onAssetCurrencyChange()">
+          <option value="INR">₹ INR</option>
+          <option value="USD">$ USD</option>
+        </select>
+        <div class="field-hint" id="asset-currency-hint"></div>
+      </div>
+      <div class="field" id="asset-facevalue-field" style="display:none;">
+        <label>Face value per bond (₹, optional — for reference)</label>
+        <input type="number" id="asset-facevalue" step="1" placeholder="e.g. 1000">
+      </div>
+      <div class="field" id="asset-coupon-field" style="display:none;">
+        <label>Coupon rate % p.a. (optional — for reference)</label>
+        <input type="number" id="asset-coupon" step="0.01" placeholder="e.g. 9.25">
+      </div>
+      <div class="field" id="asset-nav-field">
+        <label id="asset-nav-label">Current NAV / Price</label>
+        <input type="number" id="asset-nav" step="0.0001" placeholder="latest known value">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('modal-asset')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveAsset()">Save asset</button>
+    </div>
+  </div>
+</div>
+
+<!-- Account Modal -->
+<div class="modal-overlay" id="modal-account">
+  <div class="modal" style="max-width:440px;">
+    <div class="modal-head">
+      <h3 id="account-modal-title">Add account</h3>
+      <button class="icon-btn" onclick="closeModal('modal-account')">✕</button>
+    </div>
+    <input type="hidden" id="account-id">
+    <div class="form-grid" style="grid-template-columns:2fr 1fr;">
+      <div class="field">
+        <label>Account name</label>
+        <input type="text" id="account-name" placeholder="e.g. Self, Spouse, Father">
+      </div>
+      <div class="field">
+        <label>Colour tag</label>
+        <input type="color" id="account-color" value="#38bdf8" style="height:38px; padding:4px;">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('modal-account')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveAccount()">Save account</button>
+    </div>
+  </div>
+</div>
+
+<!-- Goal Modal -->
+<div class="modal-overlay" id="modal-goal">
+  <div class="modal" style="max-width:720px;">
+    <div class="modal-head">
+      <h3 id="goal-modal-title">Add goal</h3>
+      <button class="icon-btn" onclick="closeModal('modal-goal')">✕</button>
+    </div>
+    <input type="hidden" id="goal-id">
+    <div class="form-grid">
+      <div class="field">
+        <label>Goal name</label>
+        <input type="text" id="goal-name" placeholder="e.g. Retirement / Child's education">
+      </div>
+      <div class="field">
+        <label>Account</label>
+        <select id="goal-account"></select>
+      </div>
+      <div class="field">
+        <label>Target amount today (₹)</label>
+        <input type="number" id="goal-target" step="1000" placeholder="e.g. 5000000">
+      </div>
+      <div class="field">
+        <label>Target date</label>
+        <input type="date" id="goal-date">
+      </div>
+      <div class="field">
+        <label>Expected inflation % p.a.</label>
+        <input type="number" id="goal-inflation" step="0.1" value="6">
+      </div>
+      <div class="field">
+        <label>Expected return % p.a. (pre-goal)</label>
+        <input type="number" id="goal-return" step="0.1" value="11">
+      </div>
+      <div class="field">
+        <label>Annual SIP step-up %</label>
+        <input type="number" id="goal-stepup" step="0.5" value="10">
+      </div>
+      <div class="field">
+        <label>Current equity allocation %</label>
+        <input type="number" id="goal-equity-now" step="1" value="80">
+      </div>
+      <div class="field">
+        <label>Final (near-goal) equity allocation %</label>
+        <input type="number" id="goal-equity-final" step="1" value="20">
+      </div>
+      <div class="field">
+        <label>Glide-path starts N years before goal</label>
+        <input type="number" id="goal-glide-years" step="1" value="5">
+      </div>
+    </div>
+    <div class="field" style="margin-top:12px;">
+      <label>Link existing assets to this goal (optional — leave blank to enter current value manually)</label>
+      <select id="goal-linked-assets" multiple size="4"></select>
+    </div>
+    <div class="field" id="goal-manual-value-field" style="margin-top:12px;">
+      <label>Current value already saved toward this goal (₹) — used if no assets linked</label>
+      <input type="number" id="goal-manual-value" step="100" value="0">
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('modal-goal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveGoal()">Save goal</button>
+    </div>
+  </div>
+</div>
+
+<!-- Bulk import modal -->
+<div class="modal-overlay" id="modal-bulk">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>Bulk import transactions (CSV)</h3>
+      <button class="icon-btn" onclick="closeModal('modal-bulk')">✕</button>
+    </div>
+    <p style="font-size:12.5px; color:var(--text-dim);">Format (header required):<br>
+    <code style="color:var(--accent-2);">assetName,assetType,txnType,date,amount,units,navOrPrice,currency</code></p>
+    <div class="field">
+      <label>Paste CSV text</label>
+      <textarea id="bulk-csv" placeholder="assetName,assetType,txnType,date,amount,units,navOrPrice,currency
+HDFC Flexi Cap Fund,equity_mf,sip,2026-01-05,5000,,142.30"></textarea>
+    </div>
+    <button class="btn btn-ghost" onclick="downloadCsvTemplate()">⬇ Download template</button>
+    <div class="field-hint" style="margin-top:8px;">New assets are created under the currently selected account in the sidebar (switch to "All accounts" and it will default to your first account).</div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('modal-bulk')">Cancel</button>
+      <button class="btn btn-primary" onclick="processBulkImport()">Import</button>
+    </div>
+  </div>
+</div>
+
+<!-- Google Drive Restore Modal -->
+<div class="modal-overlay" id="modal-gdrive-restore">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>Restore from Google Drive</h3>
+      <button class="icon-btn" onclick="closeModal('modal-gdrive-restore')">✕</button>
+    </div>
+    <div id="gdrive-restore-list">Loading…</div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('modal-gdrive-restore')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ==========================================================================
+   FINPLAN — CORE DATA MODEL
+   All state lives in memory for this browser tab only (per sandbox rules,
+   no localStorage/sessionStorage is used). Use Export/Import JSON to persist
+   across sessions, exactly like the real NaviPlan's backup workflow.
+   ========================================================================== */
+
+let state = {
+  accounts: [],      // {id, name, color}
+  assets: [],        // {id, name, type, nav, accountId, currency}
+  transactions: [],  // {id, assetId, type, date, amount, units, navPrice, rate, tenure}
+  goals: [],         // {id, name, targetAmount, targetDate, inflation, returnRate, stepup, equityNow, equityFinal, glideYears, linkedAssetIds, manualValue, accountId}
+  settings: { usdInrRate: 83.5, displayCurrency: 'INR' },
+  meta: { createdAt: new Date().toISOString() }
+};
+
+const CURRENCY_SYMBOLS = { INR:'₹', USD:'$' };
+function ensureSettings(){
+  if (!state.settings) state.settings = { usdInrRate: 83.5, displayCurrency: 'INR' };
+  if (!state.settings.usdInrRate) state.settings.usdInrRate = 83.5;
+  if (!state.settings.displayCurrency) state.settings.displayCurrency = 'INR';
+}
+function ensureAutoBackupSettings(){
+  ensureSettings();
+  if (!state.settings.autoBackup){
+    state.settings.autoBackup = {
+      driveEnabled: false, localEnabled: false, intervalMinutes: 15,
+      lastDriveBackupAt: null, lastLocalBackupAt: null
+    };
+  }
+}
+function getExchangeRate(){ ensureSettings(); return state.settings.usdInrRate; }
+function getDisplayCurrency(){ ensureSettings(); return state.settings.displayCurrency; }
+function convertCurrency(amount, fromCurrency, toCurrency){
+  fromCurrency = fromCurrency || 'INR'; toCurrency = toCurrency || 'INR';
+  if (fromCurrency===toCurrency || !isFinite(amount)) return amount;
+  const rate = getExchangeRate();
+  if (fromCurrency==='USD' && toCurrency==='INR') return amount*rate;
+  if (fromCurrency==='INR' && toCurrency==='USD') return amount/rate;
+  return amount;
+}
+function toDisplayCurrency(amount, fromCurrency){
+  return convertCurrency(amount, fromCurrency||'INR', getDisplayCurrency());
+}
+
+let currentAccountFilter = 'all'; // 'all' or an account id
+
+function ensureDefaultAccount(){
+  if (state.accounts.length === 0){
+    state.accounts.push({ id: uid('acct'), name:'Self', color:'#38bdf8' });
+  }
+  const fallbackId = state.accounts[0].id;
+  for(const a of state.assets){ if (!a.accountId) a.accountId = fallbackId; }
+  for(const g of state.goals){ if (!g.accountId) g.accountId = fallbackId; }
+}
+function getFilteredAssets(){
+  ensureDefaultAccount();
+  return currentAccountFilter==='all' ? state.assets : state.assets.filter(a=>a.accountId===currentAccountFilter);
+}
+function getFilteredGoals(){
+  ensureDefaultAccount();
+  return currentAccountFilter==='all' ? state.goals : state.goals.filter(g=>g.accountId===currentAccountFilter);
+}
+function getAccount(id){ return state.accounts.find(a=>a.id===id); }
+function accountTag(accountId){
+  const acc = getAccount(accountId);
+  if (!acc) return '';
+  return `<span class="acct-tag"><span class="acct-dot" style="background:${acc.color}"></span>${acc.name}</span>`;
+}
+
+const ASSET_TYPE_LABELS = {
+  equity_mf: 'Equity MF', debt_mf: 'Debt MF', hybrid_mf: 'Hybrid MF',
+  gold_mf: 'Gold MF/ETF', gold: 'Gold (Physical/Digital)',
+  stock: 'Stock', us_stock: 'US Stock', bond: 'Corporate Bond', fd: 'Fixed Deposit'
+};
+const ASSET_TYPE_BADGE = {
+  equity_mf: 'badge-equity', debt_mf: 'badge-debt', hybrid_mf: 'badge-hybrid',
+  gold_mf: 'badge-gold', gold: 'badge-gold',
+  stock: 'badge-stock', us_stock: 'badge-us-stock', bond: 'badge-bond', fd: 'badge-fd'
+};
+// which broad allocation bucket each asset type maps to
+const ALLOC_BUCKET = {
+  equity_mf: 'Equity', stock: 'Equity', us_stock: 'Equity',
+  debt_mf: 'Debt', fd: 'Debt',
+  bond: 'Bonds',
+  hybrid_mf: 'Hybrid', gold_mf: 'Gold', gold: 'Gold'
+};
+// default pricing currency by asset type (user can still override per-asset)
+const DEFAULT_ASSET_CURRENCY = { us_stock: 'USD' };
+
+const MF_TXN_TYPES = [
+  ['buy','Purchase'], ['sip','SIP'], ['redeem','Redemption'],
+  ['switch_in','Switch In'], ['switch_out','Switch Out'],
+  ['dividend_payout','Dividend (Payout)'], ['dividend_reinvest','Dividend (Reinvest)']
+];
+const STOCK_TXN_TYPES = [['buy','Buy'], ['sell','Sell'], ['dividend','Dividend']];
+const GOLD_TXN_TYPES = [['buy','Purchase'], ['sell','Sell']];
+const BOND_TXN_TYPES = [['buy','Purchase'], ['interest_credit','Interest (Coupon)'], ['sell','Sell'], ['maturity','Maturity']];
+const FD_TXN_TYPES = [['deposit','Deposit Opened'], ['interest_credit','Interest Credit'], ['maturity','Maturity']];
+
+function uid(prefix){ return prefix + '_' + Math.random().toString(36).slice(2,10) + Date.now().toString(36).slice(-4); }
+function todayISO(){ return new Date().toISOString().slice(0,10); }
+function fmtMoney(n, currency){
+  if (n===null||n===undefined||isNaN(n)) return '—';
+  const cur = currency || getDisplayCurrency();
+  const sym = CURRENCY_SYMBOLS[cur] || '₹';
+  const neg = n < 0; n = Math.abs(n);
+  let s = n.toLocaleString(cur==='USD'?'en-US':'en-IN', {maximumFractionDigits:0});
+  return (neg?'-':'') + sym + s;
+}
+function fmtNum(n, d=2){ if(n===null||n===undefined||isNaN(n)) return '—'; return Number(n).toLocaleString('en-IN',{maximumFractionDigits:d}); }
+function fmtPct(n,d=2){ if(n===null||n===undefined||isNaN(n)) return '—'; return Number(n).toFixed(d)+'%'; }
+function fmtDate(d){ if(!d) return '—'; const dt = new Date(d); return dt.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}); }
+function daysBetween(a,b){ return (new Date(b) - new Date(a)) / (1000*3600*24); }
+function yearsBetween(a,b){ return daysBetween(a,b)/365.25; }
+
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(window._toastTimer);
+  window._toastTimer = setTimeout(()=>t.classList.remove('show'), 2600);
+}
+
+/* ---------------- Navigation ---------------- */
+document.querySelectorAll('.nav-item').forEach(item=>{
+  item.addEventListener('click', ()=>{
+    document.querySelectorAll('.nav-item').forEach(i=>i.classList.remove('active'));
+    item.classList.add('active');
+    document.querySelectorAll('.page').forEach(p=>p.style.display='none');
+    document.getElementById('page-'+item.dataset.tab).style.display='block';
+    renderAll();
+    closeSidebar();
+  });
+});
+
+function toggleSidebar(){
+  const sb = document.getElementById('app-sidebar');
+  const bd = document.getElementById('sidebar-backdrop');
+  const isOpen = sb.classList.contains('open');
+  sb.classList.toggle('open', !isOpen);
+  bd.classList.toggle('open', !isOpen);
+}
+function closeSidebar(){
+  document.getElementById('app-sidebar').classList.remove('open');
+  document.getElementById('sidebar-backdrop').classList.remove('open');
+}
+
+function closeModal(id){ document.getElementById(id).classList.remove('open'); }
+function openModalById(id){ document.getElementById(id).classList.add('open'); }
+
+/* ==========================================================================
+   XIRR — Newton-Raphson with bisection fallback
+   ========================================================================== */
+function xirr(cashflows){
+  // cashflows: [{date:Date/ISOstring, amount:number}], must contain at least one negative and one positive
+  if (!cashflows || cashflows.length < 2) return null;
+  const cfs = cashflows.map(c=>({t: new Date(c.date), amt: c.amount})).sort((a,b)=>a.t-b.t);
+  const t0 = cfs[0].t;
+  const years = cfs.map(c=> daysBetween(t0, c.t)/365.0);
+
+  function npv(rate){
+    let s=0;
+    for(let i=0;i<cfs.length;i++) s += cfs[i].amt / Math.pow(1+rate, years[i]);
+    return s;
+  }
+  function dnpv(rate){
+    let s=0;
+    for(let i=0;i<cfs.length;i++) s += -years[i]*cfs[i].amt / Math.pow(1+rate, years[i]+1);
+    return s;
+  }
+
+  let rate = 0.12;
+  let converged = false;
+  for(let i=0;i<100;i++){
+    const f = npv(rate);
+    const df = dnpv(rate);
+    if (Math.abs(df) < 1e-10) break;
+    const next = rate - f/df;
+    if (!isFinite(next)) break;
+    if (Math.abs(next-rate) < 1e-7){ rate=next; converged=true; break; }
+    rate = next;
+    if (rate <= -0.999) rate = -0.999 + 1e-6;
+  }
+  if (!converged || !isFinite(rate) || rate < -0.99 || rate > 50){
+    // bisection fallback
+    let lo=-0.9, hi=10;
+    let flo = npv(lo), fhi = npv(hi);
+    if (flo*fhi > 0) return null;
+    for(let i=0;i<200;i++){
+      const mid=(lo+hi)/2, fmid=npv(mid);
+      if (Math.abs(fmid) < 1e-6){ rate=mid; break; }
+      if (flo*fmid < 0){ hi=mid; fhi=fmid; } else { lo=mid; flo=fmid; }
+      rate=mid;
+    }
+  }
+  return rate*100; // percentage
+}
+
+/* ==========================================================================
+   HOLDINGS COMPUTATION
+   ========================================================================== */
+function getAsset(id){ return state.assets.find(a=>a.id===id); }
+
+// Best-effort historical price: since this app doesn't store a NAV history log, use the
+// most recent transaction price on/before the cutoff date as a proxy for the market price
+// at that time (transactions usually carry the actual NAV/price on that day). Falls back
+// to the asset's current stored price if nothing earlier is found, or if cutoff is today/future.
+function priceAsOf(asset, cutoffDate){
+  if (cutoffDate >= todayISO()) return asset.nav || 0;
+  const past = state.transactions
+    .filter(t=>t.assetId===asset.id && t.date<=cutoffDate && t.navPrice)
+    .sort((a,b)=>new Date(b.date)-new Date(a.date));
+  return past.length ? past[0].navPrice : (asset.nav||0);
+}
+
+function computeHoldings(assetsOverride, asOfDate){
+  // returns array of {asset, units, invested (net cash in, display currency), currentValue, gain, gainPct,
+  // cashflows[] (display currency), nativeCurrency, nativeInvested, nativeCurrentValue, nativeGain}
+  const cutoff = asOfDate || todayISO();
+  const holdings = [];
+  const assetList = assetsOverride || getFilteredAssets();
+
+  function finalize(asset, units, nativeInvested, nativeCurrentValue, nativeCashflows, matured, extra){
+    const cur = asset.currency || 'INR';
+    const disp = getDisplayCurrency();
+    const invested = convertCurrency(nativeInvested, cur, disp);
+    const currentValue = convertCurrency(nativeCurrentValue, cur, disp);
+    const nativeGain = nativeCurrentValue - nativeInvested;
+    const gain = currentValue - invested;
+    const cashflows = nativeCashflows.map(cf=>({ date: cf.date, amount: convertCurrency(cf.amount, cur, disp) }));
+    return Object.assign({
+      asset, units, invested, currentValue, gain,
+      gainPct: invested>0 ? (gain/invested*100) : null,
+      cashflows, matured: !!matured,
+      nativeCurrency: cur, nativeInvested, nativeCurrentValue, nativeGain
+    }, extra||{});
+  }
+
+  for(const asset of assetList){
+    const txns = state.transactions.filter(t=>t.assetId===asset.id && t.date<=cutoff).sort((a,b)=>new Date(a.date)-new Date(b.date));
+    if (txns.length===0) continue;
+
+    const cashflows = [];
+
+    if (asset.type === 'fd'){
+      // FD: principal grows via compound interest until maturity/cutoff
+      let principal = 0, openDate = null, rate = 0, matured=false, maturityValue=null, maturityDate=null;
+      for(const t of txns){
+        if (t.type==='deposit'){
+          principal += t.amount; openDate = t.date; rate = t.rate||0;
+          if (t.tenure) { maturityDate = addMonths(t.date, t.tenure); }
+          cashflows.push({date:t.date, amount:-t.amount});
+        } else if (t.type==='interest_credit'){
+          cashflows.push({date:t.date, amount: t.amount});
+        } else if (t.type==='maturity'){
+          matured = true; maturityValue = t.amount; maturityDate = t.date;
+          cashflows.push({date:t.date, amount:t.amount});
+        }
+      }
+      let currentValue;
+      if (matured){
+        currentValue = 0;
+      } else if (openDate){
+        const yrs = yearsBetween(openDate, cutoff);
+        currentValue = principal * Math.pow(1+(rate/100), Math.max(yrs,0));
+      } else currentValue = 0;
+      const invested = matured ? 0 : principal;
+      const units = matured ? 0 : 1;
+      const cfs = matured ? cashflows : [...cashflows, {date: cutoff, amount: currentValue}];
+      holdings.push(finalize(asset, units, invested, currentValue, cfs, matured, { rate, maturityDate }));
+      continue;
+    }
+
+    if (asset.type === 'bond'){
+      // Corporate bond: unit-based like a stock, but coupon interest payouts don't change units,
+      // and a "maturity" transaction closes the holding out (redeemed at face value / final amount).
+      let units = 0, netInvested = 0, matured = false;
+      for(const t of txns){
+        const navp = t.navPrice || asset.nav || 0;
+        let u = t.units;
+        if ((u===null||u===undefined||u==='') && navp>0 && t.amount) u = t.amount/navp;
+        u = Number(u)||0;
+        switch(t.type){
+          case 'buy':
+            units += u; netInvested += t.amount; cashflows.push({date:t.date, amount:-t.amount}); break;
+          case 'sell':
+            units -= u; netInvested -= t.amount; cashflows.push({date:t.date, amount:t.amount}); break;
+          case 'interest_credit':
+            cashflows.push({date:t.date, amount:t.amount}); break;
+          case 'maturity':
+            matured = true; units = 0; netInvested = 0; cashflows.push({date:t.date, amount:t.amount}); break;
+          default: break;
+        }
+      }
+      const currentValue = matured ? 0 : units * priceAsOf(asset, cutoff);
+      const cfs = matured ? cashflows : [...cashflows, {date: cutoff, amount: currentValue}];
+      holdings.push(finalize(asset, units, netInvested, currentValue, cfs, matured));
+      continue;
+    }
+
+    // MF / Stock / US Stock / Gold: unit-based
+    let units = 0, netInvested = 0;
+    for(const t of txns){
+      const navp = t.navPrice || asset.nav || 0;
+      let u = t.units;
+      if ((u===null||u===undefined||u==='') && navp>0 && t.amount) u = t.amount/navp;
+      u = Number(u)||0;
+
+      switch(t.type){
+        case 'buy': case 'sip': case 'switch_in':
+          units += u; netInvested += t.amount; cashflows.push({date:t.date, amount:-t.amount}); break;
+        case 'redeem': case 'switch_out':
+          units -= u; netInvested -= t.amount; cashflows.push({date:t.date, amount:t.amount}); break;
+        case 'sell':
+          units -= u; netInvested -= t.amount; cashflows.push({date:t.date, amount:t.amount}); break;
+        case 'dividend_payout': case 'dividend':
+          cashflows.push({date:t.date, amount:t.amount}); break; // cash out of fund, doesn't change units
+        case 'dividend_reinvest':
+          units += u; cashflows.push({date:t.date, amount:0}); break; // neutral, reinvested
+        default: break;
+      }
+    }
+    const currentValue = units * priceAsOf(asset, cutoff);
+    const cfs = [...cashflows, {date: cutoff, amount: currentValue}];
+    holdings.push(finalize(asset, units, netInvested, currentValue, cfs, false));
+  }
+  return holdings;
+}
+
+function addMonths(dateStr, months){
+  const d = new Date(dateStr);
+  d.setMonth(d.getMonth()+Number(months));
+  return d.toISOString().slice(0,10);
+}
+function addDays(dateStr, days){
+  const d = new Date(dateStr);
+  d.setDate(d.getDate()+Number(days));
+  return d.toISOString().slice(0,10);
+}
+
+function computePortfolioXIRR(holdings){
+  const allCf = [];
+  for(const h of holdings) allCf.push(...h.cashflows);
+  // merge same-date amounts isn't necessary for xirr correctness
+  return xirr(allCf);
+}
+
+/* ==========================================================================
+   DASHBOARD RENDER
+   ========================================================================== */
+let allocationChart = null;
+
+function renderDashboard(){
+  const holdings = computeHoldings();
+  const totalInvested = holdings.reduce((s,h)=>s+h.invested,0);
+  const totalCurrent = holdings.reduce((s,h)=>s+h.currentValue,0);
+  const totalGain = totalCurrent - totalInvested;
+  const gainPct = totalInvested>0 ? (totalGain/totalInvested*100) : null;
+  const portXirr = computePortfolioXIRR(holdings);
+  const totalIncome = computeIncomeEvents().reduce((s,e)=>s+e.amount,0);
+
+  const statsEl = document.getElementById('dashboard-stats');
+  statsEl.innerHTML = `
+    <div class="card"><div class="card-title">Total Invested</div><div class="stat-value">${fmtMoney(totalInvested)}</div><div class="stat-sub">Across ${holdings.length} holding(s)</div></div>
+    <div class="card"><div class="card-title">Current Value</div><div class="stat-value">${fmtMoney(totalCurrent)}</div><div class="stat-sub">As of today</div></div>
+    <div class="card"><div class="card-title">Total Gain</div><div class="stat-value ${totalGain>=0?'pos':'neg'}">${totalGain>=0?'+':''}${fmtMoney(totalGain)}</div><div class="stat-sub ${gainPct>=0?'pos':'neg'}">${gainPct!==null?(gainPct>=0?'+':'')+fmtPct(gainPct):'—'}</div></div>
+    <div class="card"><div class="card-title">Portfolio XIRR</div><div class="stat-value ${portXirr>=0?'pos':'neg'}">${portXirr!==null?fmtPct(portXirr):'—'}</div><div class="stat-sub">Cash-flow based annualised return</div></div>
+    <div class="card"><div class="card-title">Interest &amp; Dividend Income</div><div class="stat-value pos">${fmtMoney(totalIncome)}</div><div class="stat-sub">All-time, from bonds, FDs, MFs &amp; stocks</div></div>
+  `;
+
+  // holdings table
+  const holdEl = document.getElementById('holdings-table');
+  if (holdings.length===0){
+    holdEl.innerHTML = emptyState('No holdings yet', 'Add an asset and a transaction, or load sample data, to see your dashboard come alive.');
+  } else {
+    holdEl.innerHTML = `<table><thead><tr>
+      <th>Asset</th><th>Type</th><th>Units</th><th>Invested</th><th>Current Value</th><th>Gain</th><th>XIRR</th>
+    </tr></thead><tbody>
+      ${holdings.map(h=>{
+        const hx = xirr(h.cashflows);
+        const showNative = h.nativeCurrency !== getDisplayCurrency();
+        return `<tr>
+          <td data-label="Asset">${h.asset.name}</td>
+          <td data-label="Type"><span class="badge ${ASSET_TYPE_BADGE[h.asset.type]}">${ASSET_TYPE_LABELS[h.asset.type]}</span></td>
+          <td data-label="Units">${h.asset.type==='fd' ? '—' : fmtNum(h.units,3)}</td>
+          <td data-label="Invested"><span class="cell-value">${fmtMoney(h.invested)}${showNative?`<span class="native-amt">${fmtMoney(h.nativeInvested, h.nativeCurrency)}</span>`:''}</span></td>
+          <td data-label="Current Value"><span class="cell-value">${fmtMoney(h.currentValue)}${showNative?`<span class="native-amt">${fmtMoney(h.nativeCurrentValue, h.nativeCurrency)}</span>`:''}</span></td>
+          <td data-label="Gain" class="${h.gain>=0?'pos':'neg'}">${h.gain>=0?'+':''}${fmtMoney(h.gain)}</td>
+          <td data-label="XIRR" class="${hx>=0?'pos':'neg'}">${hx!==null?fmtPct(hx):'—'}</td>
+        </tr>`;
+      }).join('')}
+    </tbody></table>`;
+  }
+
+  // allocation chart
+  const buckets = {};
+  for(const h of holdings){
+    const b = ALLOC_BUCKET[h.asset.type] || 'Other';
+    buckets[b] = (buckets[b]||0) + Math.max(h.currentValue,0);
+  }
+  const labels = Object.keys(buckets);
+  const colorMap = {Equity:'#38bdf8', Debt:'#2dd4bf', Hybrid:'#a78bfa', Gold:'#fbbf24', Bonds:'#c08e91', Other:'#94a3b8'};
+  const ctx = document.getElementById('chart-allocation').getContext('2d');
+  if (allocationChart) allocationChart.destroy();
+  if (labels.length===0){
+    allocationChart = null;
+    ctx.clearRect(0,0,500,500);
+  } else {
+    allocationChart = new Chart(ctx, {
+      type:'doughnut',
+      data:{ labels, datasets:[{ data: labels.map(l=>buckets[l]), backgroundColor: labels.map(l=>colorMap[l]||'#94a3b8'), borderWidth:0 }]},
+      options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom', labels:{color:'#9aa7c7', boxWidth:12, padding:14}}}, cutout:'62%' }
+    });
+  }
+
+  // recent transactions
+  const filteredAssetIds = new Set(getFilteredAssets().map(a=>a.id));
+  const recent = [...state.transactions].filter(t=>filteredAssetIds.has(t.assetId)).sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,8);
+  document.getElementById('recent-txns').innerHTML = renderTxnTable(recent, false);
+}
+
+function emptyState(title, sub){
+  return `<div class="empty-state"><div class="big-icon">◌</div><div style="font-weight:700; color:var(--text); margin-bottom:4px;">${title}</div><div>${sub}</div></div>`;
+}
+
+/* ==========================================================================
+   TRANSACTIONS PAGE
+   ========================================================================== */
+function txnTypeLabel(assetType, type){
+  const list = assetType==='fd' ? FD_TXN_TYPES : (assetType==='bond' ? BOND_TXN_TYPES : (assetType==='gold' ? GOLD_TXN_TYPES : ((assetType==='stock'||assetType==='us_stock') ? STOCK_TXN_TYPES : MF_TXN_TYPES)));
+  const f = list.find(x=>x[0]===type);
+  return f? f[1] : type;
+}
+
+function renderTxnTable(txns, showActions=true){
+  if (txns.length===0) return emptyState('No transactions', 'Add your first transaction to get started.');
+  return `<table><thead><tr>
+    <th>Date</th><th>Asset</th><th>Type</th><th>Amount</th><th>Units</th><th>NAV/Price</th>${showActions?'<th></th>':''}
+  </tr></thead><tbody>
+    ${txns.map(t=>{
+      const a = getAsset(t.assetId);
+      const cur = a ? (a.currency||'INR') : 'INR';
+      const sym = CURRENCY_SYMBOLS[cur] || '₹';
+      return `<tr>
+        <td>${fmtDate(t.date)}</td>
+        <td>${a?a.name:'—'}</td>
+        <td><span class="badge ${a?ASSET_TYPE_BADGE[a.type]:''}">${a?txnTypeLabel(a.type,t.type):t.type}</span></td>
+        <td>${fmtMoney(t.amount, cur)}</td>
+        <td>${t.units?fmtNum(t.units,3):'—'}</td>
+        <td>${t.navPrice?sym+fmtNum(t.navPrice,4):'—'}</td>
+        ${showActions?`<td>
+          <button class="icon-btn" onclick="editTxn('${t.id}')">✎</button>
+          <button class="icon-btn" onclick="deleteTxn('${t.id}')">🗑</button>
+        </td>`:''}
+      </tr>`;
+    }).join('')}
+  </tbody></table>`;
+}
+
+function renderTransactionsPage(){
+  const filteredAssetIds = new Set(getFilteredAssets().map(a=>a.id));
+  const txns = [...state.transactions].filter(t=>filteredAssetIds.has(t.assetId)).sort((a,b)=>new Date(b.date)-new Date(a.date));
+  document.getElementById('all-txns-table').innerHTML = renderTxnTable(txns, true);
+}
+
+function populateAssetSelect(sel, includeEmpty=true){
+  const list = currentAccountFilter!=='all' ? state.assets.filter(a=>a.accountId===currentAccountFilter) : state.assets;
+  sel.innerHTML = (includeEmpty?'<option value="">Select asset…</option>':'') +
+    list.map(a=>{
+      const acc = getAccount(a.accountId);
+      const accLabel = (currentAccountFilter==='all' && acc) ? ` — ${acc.name}` : '';
+      return `<option value="${a.id}">${a.name} (${ASSET_TYPE_LABELS[a.type]})${accLabel}</option>`;
+    }).join('');
+}
+
+function openTxnModal(existing){
+  document.getElementById('txn-modal-title').textContent = existing ? 'Edit transaction' : 'Add transaction';
+  document.getElementById('txn-id').value = existing ? existing.id : '';
+  const assetSel = document.getElementById('txn-asset');
+  populateAssetSelect(assetSel);
+  const availableAssets = currentAccountFilter!=='all' ? state.assets.filter(a=>a.accountId===currentAccountFilter) : state.assets;
+  if (availableAssets.length===0){
+    showToast(currentAccountFilter!=='all' ? 'This account has no assets yet — add one first (Assets tab)' : 'Add an asset first (Assets tab)');
+    return;
+  }
+  assetSel.value = existing ? existing.assetId : availableAssets[0].id;
+  onTxnAssetChange(existing ? existing.type : null);
+  document.getElementById('txn-date').value = existing ? existing.date : todayISO();
+  document.getElementById('txn-amount').value = existing ? existing.amount : '';
+  document.getElementById('txn-units').value = existing && existing.units ? existing.units : '';
+  document.getElementById('txn-navprice').value = existing && existing.navPrice ? existing.navPrice : '';
+  document.getElementById('txn-rate').value = existing && existing.rate ? existing.rate : '';
+  document.getElementById('txn-tenure').value = existing && existing.tenure ? existing.tenure : '';
+  if (existing) document.getElementById('txn-type').value = existing.type;
+  openModalById('modal-txn');
+}
+
+function onTxnAssetChange(presetType){
+  const assetId = document.getElementById('txn-asset').value;
+  const asset = getAsset(assetId);
+  const typeSel = document.getElementById('txn-type');
+  if (!asset){ typeSel.innerHTML=''; return; }
+  const list = asset.type==='fd' ? FD_TXN_TYPES : (asset.type==='bond' ? BOND_TXN_TYPES : (asset.type==='gold' ? GOLD_TXN_TYPES : ((asset.type==='stock'||asset.type==='us_stock') ? STOCK_TXN_TYPES : MF_TXN_TYPES)));
+  typeSel.innerHTML = list.map(([v,l])=>`<option value="${v}">${l}</option>`).join('');
+  if (presetType) typeSel.value = presetType;
+
+  const isFd = asset.type==='fd';
+  const sym = CURRENCY_SYMBOLS[asset.currency||'INR'] || '₹';
+  document.getElementById('txn-units-field').style.display = isFd ? 'none':'block';
+  document.getElementById('txn-navprice-field').style.display = isFd ? 'none':'block';
+  document.getElementById('txn-rate-field').style.display = isFd ? 'block':'none';
+  document.getElementById('txn-tenure-field').style.display = isFd ? 'block':'none';
+  document.getElementById('txn-units-label').textContent = asset.type==='gold' ? 'Grams' : 'Units';
+  let navLabel;
+  if (asset.type==='stock' || asset.type==='us_stock') navLabel = `Price per unit (${sym})`;
+  else if (asset.type==='gold') navLabel = `Price per gram (${sym})`;
+  else if (asset.type==='bond') navLabel = `Price per bond (${sym})`;
+  else navLabel = `NAV (${sym})`;
+  document.getElementById('txn-navprice-label').textContent = navLabel;
+  document.getElementById('txn-amount-label').textContent = `Amount (${sym})`;
+}
+
+function saveTxn(){
+  const id = document.getElementById('txn-id').value;
+  const assetId = document.getElementById('txn-asset').value;
+  const asset = getAsset(assetId);
+  if (!asset){ showToast('Select an asset'); return; }
+  const type = document.getElementById('txn-type').value;
+  const date = document.getElementById('txn-date').value;
+  const amount = parseFloat(document.getElementById('txn-amount').value);
+  if (!date || isNaN(amount)){ showToast('Date and amount are required'); return; }
+  const units = parseFloat(document.getElementById('txn-units').value) || null;
+  const navPrice = parseFloat(document.getElementById('txn-navprice').value) || null;
+  const rate = parseFloat(document.getElementById('txn-rate').value) || null;
+  const tenure = parseInt(document.getElementById('txn-tenure').value) || null;
+
+  const txn = { id: id || uid('txn'), assetId, type, date, amount, units, navPrice, rate, tenure };
+  const idx = state.transactions.findIndex(t=>t.id===txn.id);
+  if (idx>=0) state.transactions[idx] = txn; else state.transactions.push(txn);
+  closeModal('modal-txn');
+  showToast('Transaction saved');
+  renderAll();
+}
+
+function editTxn(id){
+  const t = state.transactions.find(x=>x.id===id);
+  if (t) openTxnModal(t);
+}
+function deleteTxn(id){
+  if (!confirm('Delete this transaction?')) return;
+  state.transactions = state.transactions.filter(t=>t.id!==id);
+  renderAll();
+  showToast('Transaction deleted');
+}
+
+/* ---- Bulk import ---- */
+function openBulkImportModal(){ openModalById('modal-bulk'); }
+function downloadCsvTemplate(){
+  const csv = 'assetName,assetType,txnType,date,amount,units,navOrPrice,currency\nHDFC Flexi Cap Fund,equity_mf,sip,2026-01-05,5000,,142.30,INR\nABC Bank FD,fd,deposit,2025-04-01,100000,,,INR\nApple Inc,us_stock,buy,2025-11-10,1000,5,200.00,USD\n';
+  downloadFile('finplan_bulk_import_template.csv', csv, 'text/csv');
+}
+function processBulkImport(){
+  ensureDefaultAccount();
+  const targetAccountId = currentAccountFilter!=='all' ? currentAccountFilter : state.accounts[0].id;
+  const raw = document.getElementById('bulk-csv').value.trim();
+  if (!raw){ showToast('Paste some CSV first'); return; }
+  const lines = raw.split(/\r?\n/).filter(l=>l.trim().length);
+  const header = lines[0].split(',').map(h=>h.trim());
+  let added=0, skipped=0;
+  for(let i=1;i<lines.length;i++){
+    const cols = lines[i].split(',');
+    const row = {}; header.forEach((h,idx)=>row[h]=cols[idx]?cols[idx].trim():'');
+    if (!row.assetName || !row.txnType || !row.date || !row.amount){ skipped++; continue; }
+    let asset = state.assets.find(a=>a.name.toLowerCase()===row.assetName.toLowerCase());
+    if (!asset){
+      const assetType = row.assetType||'equity_mf';
+      const currency = row.currency || DEFAULT_ASSET_CURRENCY[assetType] || 'INR';
+      asset = { id: uid('asset'), name: row.assetName, type: assetType, nav: parseFloat(row.navOrPrice)||0, accountId: targetAccountId, currency };
+      state.assets.push(asset);
+    }
+    state.transactions.push({
+      id: uid('txn'), assetId: asset.id, type: row.txnType, date: row.date,
+      amount: parseFloat(row.amount), units: parseFloat(row.units)||null, navPrice: parseFloat(row.navOrPrice)||null,
+      rate:null, tenure:null
+    });
+    added++;
+  }
+  closeModal('modal-bulk');
+  showToast(`Imported ${added} transaction(s), skipped ${skipped}`);
+  renderAll();
+}
+
+/* ==========================================================================
+   ACCOUNTS — multi-portfolio management (Self, Spouse, Child, etc.)
+   ========================================================================== */
+function renderAccountSwitcher(){
+  ensureDefaultAccount();
+  const sel = document.getElementById('account-switcher');
+  const prevVal = currentAccountFilter;
+  sel.innerHTML = `<option value="all">All accounts</option>` +
+    state.accounts.map(a=>`<option value="${a.id}">${a.name}</option>`).join('');
+  // keep selection valid; if the selected account was deleted, fall back to 'all'
+  if (prevVal!=='all' && !state.accounts.some(a=>a.id===prevVal)) currentAccountFilter='all';
+  sel.value = currentAccountFilter;
+}
+function onAccountSwitch(){
+  currentAccountFilter = document.getElementById('account-switcher').value;
+  renderAll();
+}
+
+function renderCurrencyToggle(){
+  ensureSettings();
+  const disp = getDisplayCurrency();
+  document.querySelectorAll('#currency-toggle button').forEach(btn=>{
+    btn.classList.toggle('active', btn.dataset.cur===disp);
+  });
+  const rate = getExchangeRate();
+  const hintEl = document.getElementById('sidebar-fx-hint');
+  if (hintEl) hintEl.textContent = `1 USD = ₹${fmtNum(rate,2)}`;
+}
+function setDisplayCurrency(cur){
+  ensureSettings();
+  state.settings.displayCurrency = cur;
+  renderAll();
+}
+
+function renderAccountsPage(){
+  ensureDefaultAccount();
+  const el = document.getElementById('accounts-table');
+  const rows = state.accounts.map(acc=>{
+    const assetCount = state.assets.filter(a=>a.accountId===acc.id).length;
+    const goalCount = state.goals.filter(g=>g.accountId===acc.id).length;
+    const holdings = computeHoldings(state.assets.filter(a=>a.accountId===acc.id));
+    const value = holdings.reduce((s,h)=>s+h.currentValue,0);
+    return `<tr>
+      <td>${accountTag(acc.id)}</td>
+      <td>${assetCount} asset(s)</td>
+      <td>${goalCount} goal(s)</td>
+      <td>${fmtMoney(value)}</td>
+      <td>
+        <button class="icon-btn" onclick="editAccount('${acc.id}')">✎</button>
+        <button class="icon-btn" onclick="deleteAccount('${acc.id}')">🗑</button>
+      </td>
+    </tr>`;
+  }).join('');
+  el.innerHTML = `<table><thead><tr><th>Account</th><th>Assets</th><th>Goals</th><th>Current Value</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function openAccountModal(existing){
+  document.getElementById('account-modal-title').textContent = existing? 'Edit account':'Add account';
+  document.getElementById('account-id').value = existing? existing.id:'';
+  document.getElementById('account-name').value = existing? existing.name:'';
+  document.getElementById('account-color').value = existing? existing.color:'#38bdf8';
+  openModalById('modal-account');
+}
+function editAccount(id){ openAccountModal(getAccount(id)); }
+function saveAccount(){
+  const id = document.getElementById('account-id').value;
+  const name = document.getElementById('account-name').value.trim();
+  const color = document.getElementById('account-color').value || '#38bdf8';
+  if (!name){ showToast('Account name is required'); return; }
+  if (id){
+    const acc = getAccount(id); acc.name = name; acc.color = color;
+  } else {
+    state.accounts.push({ id: uid('acct'), name, color });
+  }
+  closeModal('modal-account');
+  showToast('Account saved');
+  renderAll();
+}
+function deleteAccount(id){
+  if (state.accounts.length<=1){ showToast("You need at least one account — add another before deleting this one."); return; }
+  const linkedAssets = state.assets.filter(a=>a.accountId===id).length;
+  const linkedGoals = state.goals.filter(g=>g.accountId===id).length;
+  let msg = 'Delete this account?';
+  if (linkedAssets || linkedGoals) msg += ` This will also permanently delete ${linkedAssets} asset(s) (and their transactions) and ${linkedGoals} goal(s) linked to it.`;
+  if (!confirm(msg)) return;
+  const doomedAssetIds = new Set(state.assets.filter(a=>a.accountId===id).map(a=>a.id));
+  state.transactions = state.transactions.filter(t=>!doomedAssetIds.has(t.assetId));
+  state.assets = state.assets.filter(a=>a.accountId!==id);
+  state.goals = state.goals.filter(g=>g.accountId!==id);
+  state.accounts = state.accounts.filter(a=>a.id!==id);
+  if (currentAccountFilter===id) currentAccountFilter='all';
+  renderAll();
+  showToast('Account deleted');
+}
+
+/* ==========================================================================
+   ASSETS PAGE
+   ========================================================================== */
+function renderAssetsPage(){
+  const el = document.getElementById('assets-table');
+  const assets = getFilteredAssets();
+  if (assets.length===0){ el.innerHTML = emptyState('No assets registered', 'Add mutual funds, stocks, bonds, gold, or FDs you want to track.'); return; }
+  const holdingsAll = computeHoldings(assets);
+  el.innerHTML = `<table><thead><tr><th>Name</th><th>Account</th><th>Type</th><th>Current NAV/Price</th><th>Holding Value</th><th></th></tr></thead><tbody>
+    ${assets.map(a=>{
+      const h = holdingsAll.find(x=>x.asset.id===a.id);
+      const cur = a.currency||'INR';
+      const showNative = h && h.nativeCurrency !== getDisplayCurrency();
+      return `<tr>
+        <td>${a.name}</td>
+        <td>${accountTag(a.accountId)}</td>
+        <td><span class="badge ${ASSET_TYPE_BADGE[a.type]}">${ASSET_TYPE_LABELS[a.type]}</span></td>
+        <td>${a.type==='fd'?'—':(CURRENCY_SYMBOLS[cur]||'₹')+fmtNum(a.nav,4)}</td>
+        <td>${h?fmtMoney(h.currentValue):'—'}${showNative?`<span class="native-amt">${fmtMoney(h.nativeCurrentValue, h.nativeCurrency)}</span>`:''}</td>
+        <td>
+          <button class="icon-btn" onclick="editAsset('${a.id}')">✎</button>
+          <button class="icon-btn" onclick="deleteAsset('${a.id}')">🗑</button>
+        </td>
+      </tr>`;
+    }).join('')}
+  </tbody></table>`;
+}
+
+function onAssetTypeChange(){
+  const type = document.getElementById('asset-type').value;
+  document.getElementById('asset-nav-field').style.display = type==='fd' ? 'none' : 'block';
+  let navLabel = 'Current NAV';
+  if (type==='stock' || type==='us_stock') navLabel = 'Current price per share';
+  else if (type==='bond') navLabel = 'Current market price per bond';
+  else if (type==='gold') navLabel = 'Current price per gram';
+  document.getElementById('asset-nav-label').textContent = navLabel;
+  document.getElementById('asset-facevalue-field').style.display = type==='bond' ? 'block' : 'none';
+  document.getElementById('asset-coupon-field').style.display = type==='bond' ? 'block' : 'none';
+
+  // default currency by type, only auto-set if the field hasn't been hand-edited for this open
+  const curSel = document.getElementById('asset-currency');
+  if (!curSel.dataset.userTouched){
+    curSel.value = DEFAULT_ASSET_CURRENCY[type] || 'INR';
+  }
+  document.getElementById('asset-currency-hint').textContent =
+    curSel.value==='USD' ? 'Amounts, NAV/price and transactions for this asset are in US Dollars — converted automatically for the dashboard.' : 'Amounts, NAV/price and transactions for this asset are in Indian Rupees.';
+}
+
+function onAssetCurrencyChange(){
+  const curSel = document.getElementById('asset-currency');
+  curSel.dataset.userTouched = '1';
+  document.getElementById('asset-currency-hint').textContent =
+    curSel.value==='USD' ? 'Amounts, NAV/price and transactions for this asset are in US Dollars — converted automatically for the dashboard.' : 'Amounts, NAV/price and transactions for this asset are in Indian Rupees.';
+}
+
+function openAssetModal(existing){
+  ensureDefaultAccount();
+  document.getElementById('asset-id').value = existing? existing.id : '';
+  document.getElementById('asset-name').value = existing? existing.name : '';
+  document.getElementById('asset-type').value = existing? existing.type : 'equity_mf';
+  document.getElementById('asset-nav').value = existing? (existing.nav||'') : '';
+  document.getElementById('asset-facevalue').value = existing && existing.faceValue ? existing.faceValue : '';
+  document.getElementById('asset-coupon').value = existing && existing.couponRate ? existing.couponRate : '';
+  const curSel = document.getElementById('asset-currency');
+  if (existing){
+    curSel.value = existing.currency || 'INR';
+    curSel.dataset.userTouched = '1'; // respect the asset's saved currency, don't auto-override on type change
+  } else {
+    curSel.value = 'INR';
+    delete curSel.dataset.userTouched;
+  }
+  const acctSel = document.getElementById('asset-account');
+  acctSel.innerHTML = state.accounts.map(a=>`<option value="${a.id}">${a.name}</option>`).join('');
+  acctSel.value = existing ? existing.accountId : (currentAccountFilter!=='all' ? currentAccountFilter : state.accounts[0].id);
+  onAssetTypeChange();
+  openModalById('modal-asset');
+}
+function editAsset(id){ openAssetModal(getAsset(id)); }
+function deleteAsset(id){
+  const inUse = state.transactions.some(t=>t.assetId===id);
+  if (inUse && !confirm('This asset has transactions linked to it. Delete anyway? Its transactions will also be removed.')) return;
+  state.transactions = state.transactions.filter(t=>t.assetId!==id);
+  state.assets = state.assets.filter(a=>a.id!==id);
+  renderAll();
+  showToast('Asset deleted');
+}
+function saveAsset(){
+  const id = document.getElementById('asset-id').value;
+  const name = document.getElementById('asset-name').value.trim();
+  const type = document.getElementById('asset-type').value;
+  const nav = parseFloat(document.getElementById('asset-nav').value) || 0;
+  const faceValue = parseFloat(document.getElementById('asset-facevalue').value) || null;
+  const couponRate = parseFloat(document.getElementById('asset-coupon').value) || null;
+  const accountId = document.getElementById('asset-account').value;
+  const currency = document.getElementById('asset-currency').value || 'INR';
+  if (!name){ showToast('Name is required'); return; }
+  const asset = { id: id||uid('asset'), name, type, nav, faceValue, couponRate, accountId, currency };
+  const idx = state.assets.findIndex(a=>a.id===asset.id);
+  if (idx>=0) state.assets[idx] = {...state.assets[idx], ...asset}; else state.assets.push(asset);
+  closeModal('modal-asset');
+  showToast('Asset saved');
+  renderAll();
+}
+
+/* ==========================================================================
+   INTEREST & DIVIDEND INCOME TRACKING
+   ========================================================================== */
+function computeIncomeEvents(){
+  const events = [];
+  const filteredAssetIds = new Set(getFilteredAssets().map(a=>a.id));
+  for(const t of state.transactions){
+    if (!filteredAssetIds.has(t.assetId)) continue;
+    const asset = getAsset(t.assetId);
+    if (!asset) continue;
+    let incomeType = null;
+    if (t.type === 'dividend_payout') incomeType = 'Dividend';
+    else if (t.type === 'dividend_reinvest') incomeType = 'Dividend (Reinvested)';
+    else if (t.type === 'dividend') incomeType = 'Dividend';
+    else if (t.type === 'interest_credit') incomeType = (asset.type==='bond') ? 'Interest (Coupon)' : 'Interest';
+    if (!incomeType) continue;
+    const amt = toDisplayCurrency(Number(t.amount)||0, asset.currency||'INR');
+    if (amt === 0) continue;
+    events.push({ date:t.date, assetName: asset.name, assetType: asset.type, incomeType, amount: amt });
+  }
+  return events.sort((a,b)=>new Date(b.date)-new Date(a.date));
+}
+
+function computeIncomeByFY(){
+  const events = computeIncomeEvents();
+  const map = {}; // fyStartYear -> {interest, dividend}
+  for(const e of events){
+    const d = new Date(e.date);
+    const fy = d.getMonth()>=3 ? d.getFullYear() : d.getFullYear()-1;
+    if (!map[fy]) map[fy] = {interest:0, dividend:0};
+    if (e.incomeType.startsWith('Interest')) map[fy].interest += e.amount;
+    else map[fy].dividend += e.amount;
+  }
+  const fyKeys = Object.keys(map).map(Number).sort((a,b)=>a-b);
+  return fyKeys.map(fy=>({ fy, label: getFYBounds(fy).label, interest: map[fy].interest, dividend: map[fy].dividend }));
+}
+
+function computeCurrentFYMonthly(){
+  const fy = currentFyStartYear();
+  const { startDate, endDate, label } = getFYBounds(fy);
+  const events = computeIncomeEvents().filter(e=>e.date>=startDate && e.date<=endDate);
+  const monthNames = ['Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec','Jan','Feb','Mar'];
+  const buckets = monthNames.map(()=>({interest:0, dividend:0}));
+  for(const e of events){
+    const d = new Date(e.date);
+    const idx = (d.getMonth() - 3 + 12) % 12; // April = index 0
+    if (e.incomeType.startsWith('Interest')) buckets[idx].interest += e.amount;
+    else buckets[idx].dividend += e.amount;
+  }
+  return { labels: monthNames, buckets, fyLabel: label };
+}
+
+let incomeYearChart = null;
+let incomeFyChart = null;
+let incomeCurrentFyChart = null;
+
+function renderIncomePage(){
+  const events = computeIncomeEvents();
+  const totalAll = events.reduce((s,e)=>s+e.amount,0);
+  const curFy = currentFyStartYear();
+  const curFyBounds = getFYBounds(curFy);
+  const totalThisFy = events.filter(e=>e.date>=curFyBounds.startDate && e.date<=curFyBounds.endDate).reduce((s,e)=>s+e.amount,0);
+  const totalInterest = events.filter(e=>e.incomeType.startsWith('Interest')).reduce((s,e)=>s+e.amount,0);
+  const totalDividend = events.filter(e=>e.incomeType.startsWith('Dividend')).reduce((s,e)=>s+e.amount,0);
+
+  document.getElementById('income-stats').innerHTML = `
+    <div class="card"><div class="card-title">Total Income (all time)</div><div class="stat-value pos">${fmtMoney(totalAll)}</div><div class="stat-sub">Interest + dividends received</div></div>
+    <div class="card"><div class="card-title">${curFyBounds.label} (current)</div><div class="stat-value">${fmtMoney(totalThisFy)}</div><div class="stat-sub">Financial-year-to-date income</div></div>
+    <div class="card"><div class="card-title">Interest vs Dividend</div><div class="stat-value" style="font-size:16px;"><span style="color:var(--debt)">${fmtMoney(totalInterest)}</span> &nbsp;/&nbsp; <span style="color:var(--hybrid)">${fmtMoney(totalDividend)}</span></div><div class="stat-sub">Interest (bonds/FDs) / Dividends (MFs/stocks)</div></div>
+  `;
+
+  // Dividend & Interest by Financial Year (grouped bar)
+  const byFy = computeIncomeByFY();
+  const fyCtx = document.getElementById('chart-income-fy').getContext('2d');
+  if (incomeFyChart) incomeFyChart.destroy();
+  if (byFy.length===0){
+    incomeFyChart = null; fyCtx.clearRect(0,0,500,500);
+  } else {
+    incomeFyChart = new Chart(fyCtx, {
+      type:'bar',
+      data:{
+        labels: byFy.map(r=>r.label),
+        datasets:[
+          { label:'Dividend', data: byFy.map(r=>r.dividend), backgroundColor:'#a78bfa', borderRadius:4 },
+          { label:'Interest', data: byFy.map(r=>r.interest), backgroundColor:'#2dd4bf', borderRadius:4 }
+        ]
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        plugins:{legend:{position:'bottom', labels:{color:'#9aa7c7', boxWidth:12, padding:12}}},
+        scales:{
+          y:{ticks:{color:'#6b7699', callback:v=>'₹'+v.toLocaleString('en-IN')}, grid:{color:'#1f2c4d'}},
+          x:{ticks:{color:'#6b7699'}, grid:{display:false}}
+        }
+      }
+    });
+  }
+
+  // This Financial Year, month-wise (grouped bar, Apr-Mar)
+  const monthly = computeCurrentFYMonthly();
+  document.getElementById('current-fy-label').textContent = `(${monthly.fyLabel})`;
+  const curCtx = document.getElementById('chart-income-current-fy').getContext('2d');
+  if (incomeCurrentFyChart) incomeCurrentFyChart.destroy();
+  const hasAnyCurrent = monthly.buckets.some(b=>b.interest>0||b.dividend>0);
+  if (!hasAnyCurrent){
+    incomeCurrentFyChart = null; curCtx.clearRect(0,0,500,500);
+  } else {
+    incomeCurrentFyChart = new Chart(curCtx, {
+      type:'bar',
+      data:{
+        labels: monthly.labels,
+        datasets:[
+          { label:'Dividend', data: monthly.buckets.map(b=>b.dividend), backgroundColor:'#a78bfa', borderRadius:4 },
+          { label:'Interest', data: monthly.buckets.map(b=>b.interest), backgroundColor:'#2dd4bf', borderRadius:4 }
+        ]
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        plugins:{legend:{position:'bottom', labels:{color:'#9aa7c7', boxWidth:12, padding:12}}},
+        scales:{
+          y:{ticks:{color:'#6b7699', callback:v=>'₹'+v.toLocaleString('en-IN')}, grid:{color:'#1f2c4d'}},
+          x:{ticks:{color:'#6b7699'}, grid:{display:false}}
+        }
+      }
+    });
+  }
+
+  // by asset table
+  const byAsset = {};
+  for(const e of events){
+    if (!byAsset[e.assetName]) byAsset[e.assetName] = {interest:0, dividend:0, type:e.assetType};
+    if (e.incomeType.startsWith('Interest')) byAsset[e.assetName].interest += e.amount;
+    else byAsset[e.assetName].dividend += e.amount;
+  }
+  const assetNames = Object.keys(byAsset);
+  const byAssetEl = document.getElementById('income-by-asset-table');
+  if (assetNames.length===0){
+    byAssetEl.innerHTML = emptyState('No income yet', 'Interest and dividend transactions will summarise here.');
+  } else {
+    byAssetEl.innerHTML = `<table><thead><tr><th>Asset</th><th>Interest</th><th>Dividend</th><th>Total</th></tr></thead><tbody>
+      ${assetNames.map(n=>{
+        const r = byAsset[n]; const tot = r.interest+r.dividend;
+        return `<tr><td>${n}</td><td>${fmtMoney(r.interest)}</td><td>${fmtMoney(r.dividend)}</td><td><strong>${fmtMoney(tot)}</strong></td></tr>`;
+      }).join('')}
+    </tbody></table>`;
+  }
+
+  // full income table
+  const tblEl = document.getElementById('income-table');
+  if (events.length===0){
+    tblEl.innerHTML = emptyState('No interest or dividend income recorded', 'Add an "Interest (Coupon)" transaction on a bond, an "Interest Credit" on an FD, or a "Dividend" transaction on a mutual fund or stock.');
+  } else {
+    tblEl.innerHTML = `<table><thead><tr><th>Date</th><th>Asset</th><th>Type</th><th>Income Type</th><th>Amount</th></tr></thead><tbody>
+      ${events.map(e=>`<tr>
+        <td>${fmtDate(e.date)}</td>
+        <td>${e.assetName}</td>
+        <td><span class="badge ${ASSET_TYPE_BADGE[e.assetType]}">${ASSET_TYPE_LABELS[e.assetType]}</span></td>
+        <td><span class="badge ${e.incomeType.startsWith('Interest')?'badge-income-interest':'badge-income-dividend'}">${e.incomeType}</span></td>
+        <td class="pos">+${fmtMoney(e.amount)}</td>
+      </tr>`).join('')}
+    </tbody></table>`;
+  }
+}
+
+/* ==========================================================================
+   FINANCIAL YEAR REPORT (India FY: 1 Apr – 31 Mar)
+   ========================================================================== */
+const INCOME_TXN_TYPES = ['interest_credit','dividend_payout','dividend'];
+const INVEST_TXN_TYPES = ['buy','sip','switch_in','deposit'];
+const WITHDRAW_TXN_TYPES = ['redeem','switch_out','sell','maturity'];
+
+function currentFyStartYear(){
+  const now = new Date();
+  return now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear()-1; // month 3 = April (0-indexed)
+}
+function getFYBounds(fyStartYear){
+  return {
+    startDate: `${fyStartYear}-04-01`,
+    endDate: `${fyStartYear+1}-03-31`,
+    label: `FY ${fyStartYear}-${String(fyStartYear+1).slice(-2)}`
+  };
+}
+function getAvailableFYs(){
+  const years = new Set([currentFyStartYear()]);
+  for(const t of state.transactions){
+    const d = new Date(t.date);
+    const fy = d.getMonth()>=3 ? d.getFullYear() : d.getFullYear()-1;
+    years.add(fy);
+  }
+  return [...years].sort((a,b)=>b-a);
+}
+
+// Simplified FIFO realised-gains calculator. Indicative only — see disclaimer in the UI.
+function computeRealizedGainsFIFO(assets, startDate, endDate){
+  const results = [];
+  for(const asset of assets){
+    if (asset.type==='fd') continue;
+    const cur = asset.currency || 'INR';
+    const txns = state.transactions.filter(t=>t.assetId===asset.id).sort((a,b)=>new Date(a.date)-new Date(b.date));
+    let lots = []; // {date, units, costPerUnit} — costPerUnit stored in display currency
+    for(const t of txns){
+      const navp = t.navPrice || asset.nav || 0;
+      let u = t.units;
+      if ((u===null||u===undefined||u==='') && navp>0 && t.amount) u = t.amount/navp;
+      u = Number(u)||0;
+      const amtDisp = toDisplayCurrency(t.amount, cur);
+
+      if (INVEST_TXN_TYPES.includes(t.type) && t.type!=='deposit'){
+        const costPerUnit = u>0 ? amtDisp/u : 0;
+        lots.push({date:t.date, units:u, costPerUnit});
+      } else if (t.type==='dividend_reinvest'){
+        const costPerUnit = u>0 ? (amtDisp||0)/u : 0;
+        lots.push({date:t.date, units:u, costPerUnit});
+      } else if (WITHDRAW_TXN_TYPES.includes(t.type)){
+        let unitsToSell = u;
+        if (t.type==='maturity') unitsToSell = lots.reduce((s,l)=>s+l.units,0);
+        if (!unitsToSell || unitsToSell<=0) continue;
+        let remaining = unitsToSell, costBasisTotal = 0;
+        const consumedLots = [];
+        while(remaining>1e-9 && lots.length){
+          const lot = lots[0];
+          const take = Math.min(lot.units, remaining);
+          const cost = take*lot.costPerUnit;
+          costBasisTotal += cost;
+          consumedLots.push({date:lot.date, units:take, cost});
+          lot.units -= take; remaining -= take;
+          if (lot.units<=1e-9) lots.shift();
+        }
+        if (t.date>=startDate && t.date<=endDate){
+          const proceeds = amtDisp;
+          let stCost=0, stProceeds=0, ltCost=0, ltProceeds=0;
+          for(const cl of consumedLots){
+            const heldDays = daysBetween(cl.date, t.date);
+            const propProceeds = proceeds*(cl.units/unitsToSell);
+            if (heldDays >= 365){ ltCost+=cl.cost; ltProceeds+=propProceeds; }
+            else { stCost+=cl.cost; stProceeds+=propProceeds; }
+          }
+          results.push({
+            assetName:asset.name, assetType:asset.type, date:t.date, txnType:t.type,
+            units:unitsToSell, proceeds, costBasis:costBasisTotal, gain:proceeds-costBasisTotal,
+            stGain: stProceeds-stCost, ltGain: ltProceeds-ltCost
+          });
+        }
+      }
+    }
+  }
+  return results.sort((a,b)=>new Date(a.date)-new Date(b.date));
+}
+
+function computeFYReport(fyStartYear){
+  const {startDate, endDate, label} = getFYBounds(fyStartYear);
+  const todayStr = todayISO();
+  const effectiveEnd = endDate < todayStr ? endDate : todayStr;
+  const dayBeforeStart = addDays(startDate, -1);
+  const assets = getFilteredAssets();
+  const filteredAssetIds = new Set(assets.map(a=>a.id));
+
+  const rows = [];
+  let totalOpening=0, totalClosing=0, totalInvested=0, totalWithdrawn=0, totalIncome=0;
+  const allCf = [];
+
+  for(const asset of assets){
+    const openingHoldings = computeHoldings([asset], dayBeforeStart);
+    const openingVal = openingHoldings.length ? openingHoldings[0].currentValue : 0;
+    const closingHoldings = computeHoldings([asset], effectiveEnd);
+    const closingVal = closingHoldings.length ? closingHoldings[0].currentValue : 0;
+
+    const txnsInFY = state.transactions.filter(t=>t.assetId===asset.id && t.date>=startDate && t.date<=effectiveEnd);
+    const cur = asset.currency || 'INR';
+    let invested=0, withdrawn=0, income=0;
+    for(const t of txnsInFY){
+      const amtDisp = toDisplayCurrency(t.amount, cur);
+      if (INVEST_TXN_TYPES.includes(t.type)) invested += amtDisp;
+      else if (WITHDRAW_TXN_TYPES.includes(t.type)) withdrawn += amtDisp;
+      else if (INCOME_TXN_TYPES.includes(t.type)) income += amtDisp;
+    }
+
+    if (openingVal>0) allCf.push({date:dayBeforeStart, amount:-openingVal});
+    for(const t of txnsInFY){
+      const amtDisp = toDisplayCurrency(t.amount, cur);
+      if (INVEST_TXN_TYPES.includes(t.type)) allCf.push({date:t.date, amount:-amtDisp});
+      else if (WITHDRAW_TXN_TYPES.includes(t.type) || INCOME_TXN_TYPES.includes(t.type)) allCf.push({date:t.date, amount:amtDisp});
+    }
+    if (closingVal>0) allCf.push({date:effectiveEnd, amount:closingVal});
+
+    totalOpening+=openingVal; totalClosing+=closingVal; totalInvested+=invested; totalWithdrawn+=withdrawn; totalIncome+=income;
+    rows.push({ asset, openingVal, closingVal, invested, withdrawn, income, gain: closingVal - openingVal - invested + withdrawn });
+  }
+
+  const periodXirr = xirr(allCf);
+  const totalGain = totalClosing - totalOpening - totalInvested + totalWithdrawn;
+  const capGains = computeRealizedGainsFIFO(assets, startDate, effectiveEnd);
+  const totalRealizedGain = capGains.reduce((s,c)=>s+c.gain,0);
+
+  const incomeEvents = computeIncomeEvents().filter(e=>e.date>=startDate && e.date<=effectiveEnd);
+  const txnLog = state.transactions.filter(t=>filteredAssetIds.has(t.assetId) && t.date>=startDate && t.date<=effectiveEnd).sort((a,b)=>new Date(a.date)-new Date(b.date));
+
+  return { label, startDate, endDate, effectiveEnd, rows, totalOpening, totalClosing, totalInvested, totalWithdrawn,
+    totalIncome, totalGain, periodXirr, capGains, totalRealizedGain, incomeEvents, txnLog };
+}
+
+let currentFyReport = null;
+let fyIncomeSplitChart = null;
+
+function renderFyReportPage(){
+  const sel = document.getElementById('fy-select');
+  const fys = getAvailableFYs();
+  const currentOptionValues = [...sel.options].map(o=>o.value);
+  const neededValues = fys.map(String);
+  const needsRepopulate = currentOptionValues.length!==neededValues.length || currentOptionValues.some((v,i)=>v!==neededValues[i]);
+  if (needsRepopulate){
+    const prevSelected = sel.value;
+    sel.innerHTML = fys.map(y=>`<option value="${y}">${getFYBounds(y).label}</option>`).join('');
+    if (fys.map(String).includes(prevSelected)) sel.value = prevSelected;
+  }
+  const fyStartYear = parseInt(sel.value || sel.options[0]?.value || currentFyStartYear());
+  const report = computeFYReport(fyStartYear);
+  currentFyReport = report;
+
+  const scopeLabel = currentAccountFilter==='all' ? 'All accounts' : (getAccount(currentAccountFilter)?.name || 'Account');
+  document.getElementById('fy-summary-stats').innerHTML = `
+    <div class="card"><div class="card-title">${report.label} · ${scopeLabel}</div><div class="stat-value" style="font-size:15px; color:var(--text-dim); font-weight:600;">${fmtDate(report.startDate)} – ${fmtDate(report.effectiveEnd)}</div><div class="stat-sub">${report.endDate>todayISO()? 'Year in progress':'Year complete'}</div></div>
+    <div class="card"><div class="card-title">Opening → Closing Value</div><div class="stat-value" style="font-size:17px;">${fmtMoney(report.totalOpening)} → ${fmtMoney(report.totalClosing)}</div><div class="stat-sub">Approximate — see note below</div></div>
+    <div class="card"><div class="card-title">Net Investment this year</div><div class="stat-value">${fmtMoney(report.totalInvested-report.totalWithdrawn)}</div><div class="stat-sub">Invested ${fmtMoney(report.totalInvested)} · Withdrawn ${fmtMoney(report.totalWithdrawn)}</div></div>
+    <div class="card"><div class="card-title">Period XIRR</div><div class="stat-value ${report.periodXirr>=0?'pos':'neg'}">${report.periodXirr!==null?fmtPct(report.periodXirr):'—'}</div><div class="stat-sub">Income received: ${fmtMoney(report.totalIncome)}</div></div>
+  `;
+
+  const assetTblEl = document.getElementById('fy-asset-table');
+  if (report.rows.length===0){
+    assetTblEl.innerHTML = emptyState('No assets in this period', 'Nothing to report for this financial year yet.');
+  } else {
+    assetTblEl.innerHTML = `<table><thead><tr><th>Asset</th><th>Type</th><th>Opening</th><th>Invested</th><th>Withdrawn</th><th>Closing</th><th>Gain</th></tr></thead><tbody>
+      ${report.rows.map(r=>`<tr>
+        <td>${r.asset.name}</td>
+        <td><span class="badge ${ASSET_TYPE_BADGE[r.asset.type]}">${ASSET_TYPE_LABELS[r.asset.type]}</span></td>
+        <td>${fmtMoney(r.openingVal)}</td>
+        <td>${fmtMoney(r.invested)}</td>
+        <td>${fmtMoney(r.withdrawn)}</td>
+        <td>${fmtMoney(r.closingVal)}</td>
+        <td class="${r.gain>=0?'pos':'neg'}">${r.gain>=0?'+':''}${fmtMoney(r.gain)}</td>
+      </tr>`).join('')}
+      <tr style="font-weight:700;">
+        <td colspan="2">Total</td>
+        <td>${fmtMoney(report.totalOpening)}</td>
+        <td>${fmtMoney(report.totalInvested)}</td>
+        <td>${fmtMoney(report.totalWithdrawn)}</td>
+        <td>${fmtMoney(report.totalClosing)}</td>
+        <td class="${report.totalGain>=0?'pos':'neg'}">${report.totalGain>=0?'+':''}${fmtMoney(report.totalGain)}</td>
+      </tr>
+    </tbody></table>`;
+  }
+
+  const capEl = document.getElementById('fy-capgains-table');
+  if (report.capGains.length===0){
+    capEl.innerHTML = emptyState('No redemptions or sales this year', 'Realised capital gains from redemptions, sales, switches or maturities will appear here.');
+  } else {
+    capEl.innerHTML = `<table><thead><tr><th>Date</th><th>Asset</th><th>Type</th><th>Proceeds</th><th>Cost Basis</th><th>Short-term Gain</th><th>Long-term Gain</th><th>Total Gain</th></tr></thead><tbody>
+      ${report.capGains.map(c=>`<tr>
+        <td>${fmtDate(c.date)}</td>
+        <td>${c.assetName}</td>
+        <td><span class="badge ${ASSET_TYPE_BADGE[c.assetType]}">${txnTypeLabel(c.assetType,c.txnType)}</span></td>
+        <td>${fmtMoney(c.proceeds)}</td>
+        <td>${fmtMoney(c.costBasis)}</td>
+        <td class="${c.stGain>=0?'pos':'neg'}">${fmtMoney(c.stGain)}</td>
+        <td class="${c.ltGain>=0?'pos':'neg'}">${fmtMoney(c.ltGain)}</td>
+        <td class="${c.gain>=0?'pos':'neg'}"><strong>${c.gain>=0?'+':''}${fmtMoney(c.gain)}</strong></td>
+      </tr>`).join('')}
+      <tr style="font-weight:700;"><td colspan="7">Total realised gain</td><td class="${report.totalRealizedGain>=0?'pos':'neg'}">${fmtMoney(report.totalRealizedGain)}</td></tr>
+    </tbody></table>`;
+  }
+
+  const incEl = document.getElementById('fy-income-table');
+  if (report.incomeEvents.length===0){
+    incEl.innerHTML = emptyState('No income this year', 'Interest and dividend transactions in this period will appear here.');
+  } else {
+    incEl.innerHTML = `<table><thead><tr><th>Date</th><th>Asset</th><th>Income Type</th><th>Amount</th></tr></thead><tbody>
+      ${report.incomeEvents.map(e=>`<tr>
+        <td>${fmtDate(e.date)}</td><td>${e.assetName}</td>
+        <td><span class="badge ${e.incomeType.startsWith('Interest')?'badge-income-interest':'badge-income-dividend'}">${e.incomeType}</span></td>
+        <td class="pos">+${fmtMoney(e.amount)}</td>
+      </tr>`).join('')}
+      <tr style="font-weight:700;"><td colspan="3">Total</td><td class="pos">${fmtMoney(report.totalIncome)}</td></tr>
+    </tbody></table>`;
+  }
+
+  const fyIncInterest = report.incomeEvents.filter(e=>e.incomeType.startsWith('Interest')).reduce((s,e)=>s+e.amount,0);
+  const fyIncDividend = report.incomeEvents.filter(e=>e.incomeType.startsWith('Dividend')).reduce((s,e)=>s+e.amount,0);
+  const splitCtx = document.getElementById('chart-fy-income-split').getContext('2d');
+  if (fyIncomeSplitChart) fyIncomeSplitChart.destroy();
+  if (fyIncInterest+fyIncDividend===0){
+    fyIncomeSplitChart = null; splitCtx.clearRect(0,0,500,500);
+  } else {
+    fyIncomeSplitChart = new Chart(splitCtx, {
+      type:'doughnut',
+      data:{ labels:['Interest','Dividend'], datasets:[{ data:[fyIncInterest, fyIncDividend], backgroundColor:['#2dd4bf','#a78bfa'], borderWidth:0 }]},
+      options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom', labels:{color:'#9aa7c7', boxWidth:12, padding:12}}}, cutout:'62%' }
+    });
+  }
+
+  document.getElementById('fy-txn-table').innerHTML = renderTxnTable(report.txnLog, false);
+}
+
+function downloadFyReportCSV(){
+  if (!currentFyReport) return;
+  const r = currentFyReport;
+  let csv = `FinPlan Financial Year Report\n${r.label},${r.startDate} to ${r.effectiveEnd}\n\n`;
+  csv += `SUMMARY\nOpening Value,${r.totalOpening.toFixed(2)}\nClosing Value,${r.totalClosing.toFixed(2)}\nInvested,${r.totalInvested.toFixed(2)}\nWithdrawn,${r.totalWithdrawn.toFixed(2)}\nIncome,${r.totalIncome.toFixed(2)}\nGain,${r.totalGain.toFixed(2)}\nPeriod XIRR %,${r.periodXirr!==null?r.periodXirr.toFixed(2):''}\n\n`;
+  csv += `ASSET-WISE MOVEMENT\nAsset,Type,Opening,Invested,Withdrawn,Closing,Gain\n`;
+  r.rows.forEach(row=>{ csv += `"${row.asset.name}",${ASSET_TYPE_LABELS[row.asset.type]},${row.openingVal.toFixed(2)},${row.invested.toFixed(2)},${row.withdrawn.toFixed(2)},${row.closingVal.toFixed(2)},${row.gain.toFixed(2)}\n`; });
+  csv += `\nREALISED CAPITAL GAINS (indicative)\nDate,Asset,Type,Proceeds,Cost Basis,Short-term Gain,Long-term Gain,Total Gain\n`;
+  r.capGains.forEach(c=>{ csv += `${c.date},"${c.assetName}",${c.txnType},${c.proceeds.toFixed(2)},${c.costBasis.toFixed(2)},${c.stGain.toFixed(2)},${c.ltGain.toFixed(2)},${c.gain.toFixed(2)}\n`; });
+  csv += `\nINCOME\nDate,Asset,Income Type,Amount\n`;
+  r.incomeEvents.forEach(e=>{ csv += `${e.date},"${e.assetName}",${e.incomeType},${e.amount.toFixed(2)}\n`; });
+  csv += `\nTRANSACTIONS\nDate,Asset,Currency,Type,Amount,Units,NAV/Price\n`;
+  r.txnLog.forEach(t=>{ const a=getAsset(t.assetId); csv += `${t.date},"${a?a.name:''}",${a?(a.currency||'INR'):''},${t.type},${t.amount},${t.units||''},${t.navPrice||''}\n`; });
+  downloadFile(`finplan_${r.label.replace(/\s+/g,'_')}_report.csv`, csv, 'text/csv');
+  showToast('CSV report downloaded');
+}
+
+function downloadFyReportPDF(){
+  if (!currentFyReport){ showToast('Generate a report first'); return; }
+  if (typeof window.jspdf === 'undefined'){ showToast('PDF library did not load — try the CSV export instead'); return; }
+  const r = currentFyReport;
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const scopeLabel = currentAccountFilter==='all' ? 'All accounts' : (getAccount(currentAccountFilter)?.name || 'Account');
+
+  doc.setFontSize(16); doc.text('FinPlan — Financial Year Report', 14, 16);
+  doc.setFontSize(11); doc.setTextColor(90);
+  doc.text(`${r.label}  (${r.startDate} to ${r.effectiveEnd})  ·  Scope: ${scopeLabel}`, 14, 23);
+  doc.setTextColor(0);
+
+  let y = 32;
+  doc.autoTable({
+    startY: y,
+    head: [['Metric','Value']],
+    body: [
+      ['Opening Value', fmtMoney(r.totalOpening)],
+      ['Closing Value', fmtMoney(r.totalClosing)],
+      ['Invested this year', fmtMoney(r.totalInvested)],
+      ['Withdrawn this year', fmtMoney(r.totalWithdrawn)],
+      ['Income received (interest+dividend)', fmtMoney(r.totalIncome)],
+      ['Total Gain', fmtMoney(r.totalGain)],
+      ['Period XIRR', r.periodXirr!==null?fmtPct(r.periodXirr):'—'],
+      ['Realised Capital Gain (indicative)', fmtMoney(r.totalRealizedGain)]
+    ],
+    theme:'grid', styles:{fontSize:9}, headStyles:{fillColor:[20,31,60]}
+  });
+  y = doc.lastAutoTable.finalY + 10;
+
+  doc.setFontSize(12); doc.text('Asset-wise Movement', 14, y); y += 4;
+  doc.autoTable({
+    startY: y,
+    head: [['Asset','Type','Opening','Invested','Withdrawn','Closing','Gain']],
+    body: r.rows.map(row=>[row.asset.name, ASSET_TYPE_LABELS[row.asset.type], fmtMoney(row.openingVal), fmtMoney(row.invested), fmtMoney(row.withdrawn), fmtMoney(row.closingVal), fmtMoney(row.gain)]),
+    theme:'grid', styles:{fontSize:8}, headStyles:{fillColor:[20,31,60]}
+  });
+  y = doc.lastAutoTable.finalY + 10;
+
+  if (y > 250){ doc.addPage(); y = 16; }
+  doc.setFontSize(12); doc.text('Realised Capital Gains (indicative, FIFO)', 14, y); y += 4;
+  if (r.capGains.length){
+    doc.autoTable({
+      startY: y,
+      head: [['Date','Asset','Proceeds','Cost Basis','ST Gain','LT Gain','Total']],
+      body: r.capGains.map(c=>[fmtDate(c.date), c.assetName, fmtMoney(c.proceeds), fmtMoney(c.costBasis), fmtMoney(c.stGain), fmtMoney(c.ltGain), fmtMoney(c.gain)]),
+      theme:'grid', styles:{fontSize:8}, headStyles:{fillColor:[20,31,60]}
+    });
+    y = doc.lastAutoTable.finalY + 6;
+  } else { doc.setFontSize(9); doc.text('No redemptions or sales this year.', 14, y); y += 8; }
+  doc.setFontSize(7.5); doc.setTextColor(120);
+  doc.text('Indicative only, not tax advice. Short/long-term uses a simple 365-day rule; actual rules vary by asset class (indexation, grandfathering, etc). Verify with your CAS/AIS/tax advisor.', 14, y, {maxWidth:180});
+  doc.setTextColor(0);
+  y += 12;
+
+  if (y > 250){ doc.addPage(); y = 16; }
+  doc.setFontSize(12); doc.text('Interest & Dividend Income', 14, y); y += 4;
+  if (r.incomeEvents.length){
+    doc.autoTable({
+      startY: y,
+      head: [['Date','Asset','Income Type','Amount']],
+      body: r.incomeEvents.map(e=>[fmtDate(e.date), e.assetName, e.incomeType, fmtMoney(e.amount)]),
+      theme:'grid', styles:{fontSize:8}, headStyles:{fillColor:[20,31,60]}
+    });
+    y = doc.lastAutoTable.finalY + 10;
+  } else { doc.setFontSize(9); doc.text('No income this year.', 14, y); y += 12; }
+
+  if (y > 240){ doc.addPage(); y = 16; }
+  doc.setFontSize(12); doc.text('All Transactions', 14, y); y += 4;
+  doc.autoTable({
+    startY: y,
+    head: [['Date','Asset','Type','Amount','Units','NAV/Price']],
+    body: r.txnLog.map(t=>{ const a=getAsset(t.assetId); const cur=a?(a.currency||'INR'):'INR'; const sym=CURRENCY_SYMBOLS[cur]||'₹'; return [fmtDate(t.date), a?a.name:'', a?txnTypeLabel(a.type,t.type):t.type, fmtMoney(t.amount, cur), t.units?fmtNum(t.units,3):'—', t.navPrice?sym+fmtNum(t.navPrice,4):'—']; }),
+    theme:'grid', styles:{fontSize:7.5}, headStyles:{fillColor:[20,31,60]}
+  });
+
+  doc.save(`finplan_${r.label.replace(/\s+/g,'_')}_report.pdf`);
+  showToast('PDF report downloaded');
+}
+
+/* ==========================================================================
+   NAV UPDATE PAGE
+   ========================================================================== */
+function renderNavUpdatePage(){
+  const el = document.getElementById('nav-update-table');
+  const relevant = getFilteredAssets().filter(a=>a.type!=='fd');
+  if (relevant.length===0){ el.innerHTML = emptyState('No priced assets', 'Mutual funds, stocks, bonds and gold appear here for manual price updates.'); return; }
+  el.innerHTML = `<table><thead><tr><th>Asset</th><th>Currency</th><th>Current value</th><th>New value</th><th></th></tr></thead><tbody>
+    ${relevant.map(a=>{ const sym = CURRENCY_SYMBOLS[a.currency||'INR']||'₹'; return `<tr>
+      <td>${a.name}</td>
+      <td>${a.currency||'INR'}</td>
+      <td>${sym}${fmtNum(a.nav,4)}</td>
+      <td><input type="number" step="0.0001" style="width:110px; padding:6px 8px; border-radius:6px; border:1px solid var(--card-border); background:var(--bg-soft); color:var(--text);" id="navinput-${a.id}" placeholder="${fmtNum(a.nav,4)}"></td>
+      <td><button class="btn btn-sm btn-primary" onclick="updateSingleNav('${a.id}')">Update</button></td>
+    </tr>`; }).join('')}
+  </tbody></table>`;
+}
+function updateSingleNav(assetId){
+  const v = parseFloat(document.getElementById('navinput-'+assetId).value);
+  if (isNaN(v) || v<=0){ showToast('Enter a valid value'); return; }
+  const a = getAsset(assetId); a.nav = v;
+  showToast(`${a.name} updated to ${fmtNum(v,4)}`);
+  renderAll();
+}
+function applyNavAllUpload(){
+  const raw = document.getElementById('navall-input').value.trim();
+  if (!raw){ showToast('Paste NAV data first'); return; }
+  const lines = raw.split(/\r?\n/).filter(l=>l.trim());
+  let updated=0, notFound=0;
+  for(const line of lines){
+    const parts = line.split(';');
+    if (parts.length<2) continue;
+    const name = parts[0].trim().toLowerCase();
+    const nav = parseFloat(parts[1]);
+    if (isNaN(nav)) continue;
+    const asset = state.assets.find(a=>a.name.toLowerCase()===name);
+    if (asset){ asset.nav = nav; updated++; } else notFound++;
+  }
+  showToast(`Updated ${updated} asset(s), ${notFound} not matched`);
+  document.getElementById('navall-input').value='';
+  renderAll();
+}
+
+/* ==========================================================================
+   GOALS PAGE — projection, required SIP, glide path
+   ========================================================================== */
+
+// Future value factor of a unit (₹1/month) SIP with annual step-up, monthly compounding at monthlyRate
+function fvOfUnitSip(monthlyRate, stepPct, months){
+  let value = 0;
+  let sip = 1;
+  for(let m=1; m<=months; m++){
+    value = value*(1+monthlyRate) + sip;
+    if (m % 12 === 0) sip *= (1+stepPct/100);
+  }
+  return value;
+}
+
+function computeGoalPlan(goal){
+  const now = new Date();
+  const target = new Date(goal.targetDate);
+  const yearsLeft = Math.max(yearsBetween(todayISO(), goal.targetDate), 0);
+  const monthsLeft = Math.max(Math.round(yearsLeft*12), 0);
+
+  const inflAdjTarget = goal.targetAmount * Math.pow(1+goal.inflation/100, yearsLeft);
+
+  // current value from linked assets or manual
+  let currentValue = goal.manualValue || 0;
+  if (goal.linkedAssetIds && goal.linkedAssetIds.length){
+    const holdings = computeHoldings(state.assets);
+    currentValue = goal.linkedAssetIds.reduce((s,id)=>{
+      const h = holdings.find(x=>x.asset.id===id);
+      return s + (h? h.currentValue : 0);
+    }, 0);
+  }
+
+  const monthlyRate = goal.returnRate/1200;
+  const fvOfCurrent = currentValue * Math.pow(1+monthlyRate, monthsLeft);
+  const remainingNeeded = Math.max(inflAdjTarget - fvOfCurrent, 0);
+  const unitFv = fvOfUnitSip(monthlyRate, goal.stepup, monthsLeft);
+  const requiredSip = unitFv > 0 ? remainingNeeded/unitFv : 0;
+
+  // projected corpus if requiredSip is invested (should ~= inflAdjTarget); also compute "if no more SIP" projection
+  const projectedNoMoreSip = fvOfCurrent;
+
+  // glide path: equity % for each future year
+  const glide = [];
+  for(let y=Math.ceil(yearsLeft); y>=0; y--){
+    let eq;
+    if (y > goal.glideYears) eq = goal.equityNow;
+    else {
+      const progress = goal.glideYears>0 ? (goal.glideYears - y)/goal.glideYears : 1;
+      eq = goal.equityNow - progress*(goal.equityNow-goal.equityFinal);
+    }
+    glide.push({ yearsToGoal: y, equityPct: Math.max(Math.min(eq,100),0) });
+  }
+  glide.reverse();
+
+  // current actual equity % from linked assets (for rebalancing hint)
+  let currentEquityPct = null;
+  if (goal.linkedAssetIds && goal.linkedAssetIds.length){
+    const holdings = computeHoldings(state.assets);
+    let eqVal=0, totVal=0;
+    for(const id of goal.linkedAssetIds){
+      const h = holdings.find(x=>x.asset.id===id);
+      if (!h) continue;
+      totVal += h.currentValue;
+      if (ALLOC_BUCKET[h.asset.type]==='Equity') eqVal += h.currentValue;
+    }
+    if (totVal>0) currentEquityPct = eqVal/totVal*100;
+  }
+  const targetEquityNow = glide.length? glide[0].equityPct : goal.equityNow;
+
+  return {
+    yearsLeft, monthsLeft, inflAdjTarget, currentValue, fvOfCurrent, remainingNeeded,
+    requiredSip, projectedNoMoreSip, glide, currentEquityPct, targetEquityNow
+  };
+}
+
+let glideCharts = {};
+
+function renderGoalsPage(){
+  const el = document.getElementById('goals-list');
+  const goals = getFilteredGoals();
+  if (goals.length===0){ el.innerHTML = emptyState('No goals yet', 'Add a goal to see the SIP needed, inflation-adjusted target, and a de-risking glide path.'); return; }
+
+  el.innerHTML = goals.map(g=>`
+    <div class="card goal-card" id="goal-card-${g.id}">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px;">
+        <div>
+          <div style="font-size:16px; font-weight:700; display:flex; align-items:center; gap:10px;">${g.name} ${accountTag(g.accountId)}</div>
+          <div style="color:var(--text-dim); font-size:12.5px;">Target: ${fmtDate(g.targetDate)} · ${fmtMoney(g.targetAmount)} in today's money</div>
+        </div>
+        <div style="display:flex; gap:6px;">
+          <button class="btn btn-sm" onclick="editGoal('${g.id}')">Edit</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteGoal('${g.id}')">Delete</button>
+        </div>
+      </div>
+      <div class="two-col" style="margin-top:14px;">
+        <div>
+          <div class="kv-row"><span class="k">Years remaining</span><span class="v">${fmtNum(0,0)}</span></div>
+        </div>
+      </div>
+      <div id="goal-body-${g.id}"></div>
+    </div>
+  `).join('');
+
+  for(const g of goals){
+    const plan = computeGoalPlan(g);
+    const progressPct = Math.min(plan.fvOfCurrent/plan.inflAdjTarget*100 || 0, 100);
+    const body = document.getElementById('goal-body-'+g.id);
+    body.innerHTML = `
+      <div class="goal-progress-track"><div class="goal-progress-fill" style="width:${progressPct}%"></div></div>
+      <div class="two-col">
+        <div>
+          <div class="kv-row"><span class="k">Years remaining</span><span class="v">${fmtNum(plan.yearsLeft,1)} yrs</span></div>
+          <div class="kv-row"><span class="k">Inflation-adjusted target</span><span class="v">${fmtMoney(plan.inflAdjTarget)}</span></div>
+          <div class="kv-row"><span class="k">Current value toward goal</span><span class="v">${fmtMoney(plan.currentValue)}</span></div>
+          <div class="kv-row"><span class="k">Projected value (current corpus only, no more SIP)</span><span class="v">${fmtMoney(plan.projectedNoMoreSip)}</span></div>
+          <div class="kv-row"><span class="k">Shortfall to cover via SIP</span><span class="v ${plan.remainingNeeded>0?'neg':'pos'}">${fmtMoney(plan.remainingNeeded)}</span></div>
+          <div class="kv-row"><span class="k">Required monthly SIP (with ${g.stepup}% step-up)</span><span class="v pos">${fmtMoney(plan.requiredSip)}</span></div>
+          ${plan.currentEquityPct!==null?`<div class="kv-row"><span class="k">Current equity allocation (linked assets)</span><span class="v">${fmtPct(plan.currentEquityPct,1)}</span></div>
+          <div class="kv-row"><span class="k">Target equity allocation (glide path, today)</span><span class="v">${fmtPct(plan.targetEquityNow,1)}</span></div>
+          <div class="kv-row"><span class="k">Rebalancing hint</span><span class="v">${rebalanceHint(plan.currentEquityPct, plan.targetEquityNow)}</span></div>`:''}
+        </div>
+        <div class="chart-box-sm"><canvas id="glide-chart-${g.id}"></canvas></div>
+      </div>
+    `;
+    // glide chart
+    const ctx = document.getElementById('glide-chart-'+g.id).getContext('2d');
+    if (glideCharts[g.id]) glideCharts[g.id].destroy();
+    glideCharts[g.id] = new Chart(ctx, {
+      type:'line',
+      data:{
+        labels: plan.glide.map(p=>'Yr '+p.yearsToGoal),
+        datasets:[{
+          label:'Equity %', data: plan.glide.map(p=>p.equityPct),
+          borderColor:'#38bdf8', backgroundColor:'rgba(56,189,248,.15)', fill:true, tension:.25, pointRadius:0
+        }]
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        plugins:{legend:{display:false}, title:{display:true, text:'Equity glide path to goal', color:'#9aa7c7', font:{size:11}}},
+        scales:{
+          y:{min:0,max:100, ticks:{color:'#6b7699', callback:v=>v+'%'}, grid:{color:'#1f2c4d'}},
+          x:{ticks:{color:'#6b7699', maxTicksLimit:8}, grid:{display:false}}
+        }
+      }
+    });
+  }
+}
+function rebalanceHint(current, target){
+  if (current===null || target===null) return '—';
+  const diff = current - target;
+  if (Math.abs(diff) < 3) return 'On track, no action needed';
+  if (diff > 0) return `Reduce equity by ~${fmtPct(diff,1)} (shift to debt)`;
+  return `Increase equity by ~${fmtPct(-diff,1)} (shift from debt)`;
+}
+
+function openGoalModal(existing){
+  ensureDefaultAccount();
+  document.getElementById('goal-modal-title').textContent = existing? 'Edit goal':'Add goal';
+  document.getElementById('goal-id').value = existing? existing.id:'';
+  document.getElementById('goal-name').value = existing? existing.name:'';
+  const goalAcctSel = document.getElementById('goal-account');
+  goalAcctSel.innerHTML = state.accounts.map(a=>`<option value="${a.id}">${a.name}</option>`).join('');
+  goalAcctSel.value = existing ? existing.accountId : (currentAccountFilter!=='all' ? currentAccountFilter : state.accounts[0].id);
+  document.getElementById('goal-target').value = existing? existing.targetAmount:'';
+  document.getElementById('goal-date').value = existing? existing.targetDate : '';
+  document.getElementById('goal-inflation').value = existing? existing.inflation:6;
+  document.getElementById('goal-return').value = existing? existing.returnRate:11;
+  document.getElementById('goal-stepup').value = existing? existing.stepup:10;
+  document.getElementById('goal-equity-now').value = existing? existing.equityNow:80;
+  document.getElementById('goal-equity-final').value = existing? existing.equityFinal:20;
+  document.getElementById('goal-glide-years').value = existing? existing.glideYears:5;
+  document.getElementById('goal-manual-value').value = existing? (existing.manualValue||0):0;
+
+  const linkSel = document.getElementById('goal-linked-assets');
+  linkSel.innerHTML = state.assets.map(a=>`<option value="${a.id}">${a.name}</option>`).join('');
+  if (existing && existing.linkedAssetIds){
+    [...linkSel.options].forEach(o=>{ if (existing.linkedAssetIds.includes(o.value)) o.selected=true; });
+  }
+  openModalById('modal-goal');
+}
+function editGoal(id){ openGoalModal(state.goals.find(g=>g.id===id)); }
+function deleteGoal(id){
+  if (!confirm('Delete this goal?')) return;
+  state.goals = state.goals.filter(g=>g.id!==id);
+  renderAll();
+  showToast('Goal deleted');
+}
+function saveGoal(){
+  const id = document.getElementById('goal-id').value;
+  const name = document.getElementById('goal-name').value.trim();
+  const targetAmount = parseFloat(document.getElementById('goal-target').value);
+  const targetDate = document.getElementById('goal-date').value;
+  if (!name || isNaN(targetAmount) || !targetDate){ showToast('Name, target amount and date are required'); return; }
+  const linkedAssetIds = [...document.getElementById('goal-linked-assets').selectedOptions].map(o=>o.value);
+  const goal = {
+    id: id||uid('goal'), name, targetAmount, targetDate,
+    accountId: document.getElementById('goal-account').value,
+    inflation: parseFloat(document.getElementById('goal-inflation').value)||0,
+    returnRate: parseFloat(document.getElementById('goal-return').value)||0,
+    stepup: parseFloat(document.getElementById('goal-stepup').value)||0,
+    equityNow: parseFloat(document.getElementById('goal-equity-now').value)||0,
+    equityFinal: parseFloat(document.getElementById('goal-equity-final').value)||0,
+    glideYears: parseFloat(document.getElementById('goal-glide-years').value)||0,
+    linkedAssetIds,
+    manualValue: parseFloat(document.getElementById('goal-manual-value').value)||0
+  };
+  const idx = state.goals.findIndex(g=>g.id===goal.id);
+  if (idx>=0) state.goals[idx]=goal; else state.goals.push(goal);
+  closeModal('modal-goal');
+  showToast('Goal saved');
+  renderAll();
+}
+
+/* ==========================================================================
+   BACKUP / RESTORE / WIPE
+   ========================================================================== */
+function downloadFile(filename, content, mime){
+  const blob = new Blob([content], {type:mime});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+function renderSettingsPage(){
+  ensureSettings();
+  const fxInput = document.getElementById('settings-fx-rate');
+  if (fxInput && document.activeElement !== fxInput) fxInput.value = state.settings.usdInrRate;
+}
+function saveFxRate(){
+  const v = parseFloat(document.getElementById('settings-fx-rate').value);
+  if (isNaN(v) || v<=0){ showToast('Enter a valid exchange rate'); return; }
+  ensureSettings();
+  state.settings.usdInrRate = v;
+  showToast(`Exchange rate updated: 1 USD = ₹${fmtNum(v,2)}`);
+  renderAll();
+}
+
+function exportJSON(){
+  const payload = JSON.stringify(state, null, 2);
+  downloadFile(`finplan_backup_${todayISO()}.json`, payload, 'application/json');
+  showToast('Backup downloaded');
+}
+function importJSON(file){
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e=>{
+    try{
+      const data = JSON.parse(e.target.result);
+      if (!data.assets || !data.transactions) throw new Error('bad format');
+      state = { accounts: data.accounts||[], assets: data.assets||[], transactions: data.transactions||[], goals: data.goals||[], settings: data.settings||{usdInrRate:83.5, displayCurrency:'INR'}, meta: data.meta||{} };
+      ensureDefaultAccount();
+      ensureSettings();
+      currentAccountFilter = 'all';
+      renderAll();
+      restartAutoBackupIntervals();
+      showToast('Backup restored');
+    }catch(err){
+      showToast('Could not read this file — is it a FinPlan JSON backup?');
+    }
+  };
+  reader.readAsText(file);
+}
+function exportHoldingsCSV(){
+  const holdings = computeHoldings();
+  let csv = `Account,Asset,Type,Currency,Units,Invested (${getDisplayCurrency()}),Current Value (${getDisplayCurrency()}),Gain (${getDisplayCurrency()}),XIRR%\n`;
+  holdings.forEach(h=>{
+    const hx = xirr(h.cashflows);
+    const acc = getAccount(h.asset.accountId);
+    csv += `"${acc?acc.name:''}","${h.asset.name}",${ASSET_TYPE_LABELS[h.asset.type]},${h.nativeCurrency},${h.asset.type==='fd'?'':fmtNum(h.units,3)},${h.invested.toFixed(2)},${h.currentValue.toFixed(2)},${h.gain.toFixed(2)},${hx!==null?hx.toFixed(2):''}\n`;
+  });
+  downloadFile(`finplan_holdings_${todayISO()}.csv`, csv, 'text/csv');
+}
+function exportTxnsCSV(){
+  let csv = 'Date,Asset,Type,Currency,TxnType,Amount,Units,NAVPrice\n';
+  [...state.transactions].sort((a,b)=>new Date(a.date)-new Date(b.date)).forEach(t=>{
+    const a = getAsset(t.assetId);
+    csv += `${t.date},"${a?a.name:''}",${a?a.type:''},${a?(a.currency||'INR'):''},${t.type},${t.amount},${t.units||''},${t.navPrice||''}\n`;
+  });
+  downloadFile(`finplan_transactions_${todayISO()}.csv`, csv, 'text/csv');
+}
+function confirmWipe(){
+  if (!confirm('This will permanently delete ALL assets, transactions and goals in this session. Continue?')) return;
+  if (!confirm('Are you absolutely sure? This cannot be undone unless you have exported a JSON backup.')) return;
+  ensureAutoBackupSettings();
+  const hadAutoBackup = state.settings.autoBackup.driveEnabled || state.settings.autoBackup.localEnabled;
+  clearInterval(autoBackupDriveInterval);
+  clearInterval(autoBackupLocalInterval);
+  clearTimeout(autoBackupDebounceTimer);
+  lastDriveAutoSnapshot = null;
+  lastLocalAutoSnapshot = null;
+  state = { accounts:[], assets:[], transactions:[], goals:[], settings:{usdInrRate:83.5, displayCurrency:'INR'}, meta:{createdAt:new Date().toISOString()} };
+  currentAccountFilter = 'all';
+  renderAll();
+  if (hadAutoBackup) showToast('All data wiped. Auto-backup was turned off so your last backup is not overwritten — re-enable it in Settings once you\'re ready.');
+  else showToast('All data wiped');
+}
+
+/* ==========================================================================
+   SAMPLE DATA
+   ========================================================================== */
+function loadSampleData(){
+  const acctSelf = {id:uid('acct'), name:'Self', color:'#38bdf8'};
+  const acctSpouse = {id:uid('acct'), name:'Spouse', color:'#a78bfa'};
+  state.accounts.push(acctSelf, acctSpouse);
+  currentAccountFilter = 'all';
+  ensureSettings();
+  state.settings.usdInrRate = 83.5;
+
+  const a1 = {id:uid('asset'), name:'Parag Parikh Flexi Cap Fund', type:'equity_mf', nav:82.45, accountId:acctSelf.id, currency:'INR'};
+  const a2 = {id:uid('asset'), name:'HDFC Balanced Advantage Fund', type:'hybrid_mf', nav:45.10, accountId:acctSelf.id, currency:'INR'};
+  const a3 = {id:uid('asset'), name:'ICICI Pru Short Term Debt Fund', type:'debt_mf', nav:58.30, accountId:acctSelf.id, currency:'INR'};
+  const a4 = {id:uid('asset'), name:'Reliance Industries', type:'stock', nav:2950, accountId:acctSelf.id, currency:'INR'};
+  const a5 = {id:uid('asset'), name:'SBI Bank FD 2025', type:'fd', nav:0, accountId:acctSpouse.id, currency:'INR'};
+  const a6 = {id:uid('asset'), name:'HDFC Ltd 9.25% NCD 2028', type:'bond', nav:1012, faceValue:1000, couponRate:9.25, accountId:acctSpouse.id, currency:'INR'};
+  const a7 = {id:uid('asset'), name:'Axis Bluechip Fund', type:'equity_mf', nav:56.20, accountId:acctSpouse.id, currency:'INR'};
+  const a8 = {id:uid('asset'), name:'Digital Gold', type:'gold', nav:7150, accountId:acctSelf.id, currency:'INR'};
+  const a9 = {id:uid('asset'), name:'Apple Inc (AAPL)', type:'us_stock', nav:225, accountId:acctSelf.id, currency:'USD'};
+  state.assets.push(a1,a2,a3,a4,a5,a6,a7,a8,a9);
+
+  function m(dateOffsetMonths){ return addMonths(todayISO(), -dateOffsetMonths); }
+  for(let i=24;i>=1;i--){
+    state.transactions.push({id:uid('txn'), assetId:a1.id, type:'sip', date:m(i), amount:10000, units: 10000/(60+ i*0.9), navPrice: 60+ (24-i)*0.9, rate:null, tenure:null});
+  }
+  for(let i=18;i>=1;i--){
+    state.transactions.push({id:uid('txn'), assetId:a2.id, type:'sip', date:m(i), amount:5000, units: 5000/(35+ i*0.5), navPrice: 35+ (18-i)*0.5, rate:null, tenure:null});
+  }
+  state.transactions.push({id:uid('txn'), assetId:a3.id, type:'buy', date:m(10), amount:200000, units:200000/54, navPrice:54, rate:null, tenure:null});
+  state.transactions.push({id:uid('txn'), assetId:a4.id, type:'buy', date:m(14), amount:150000, units:60, navPrice:2500, rate:null, tenure:null});
+  state.transactions.push({id:uid('txn'), assetId:a4.id, type:'dividend', date:m(6), amount:900, units:null, navPrice:null, rate:null, tenure:null});
+  state.transactions.push({id:uid('txn'), assetId:a4.id, type:'dividend', date:m(1), amount:1100, units:null, navPrice:null, rate:null, tenure:null});
+  state.transactions.push({id:uid('txn'), assetId:a5.id, type:'deposit', date:m(12), amount:100000, units:null, navPrice:null, rate:7.1, tenure:36});
+  state.transactions.push({id:uid('txn'), assetId:a6.id, type:'buy', date:m(11), amount:101200, units:100, navPrice:1012, rate:null, tenure:null});
+  state.transactions.push({id:uid('txn'), assetId:a6.id, type:'interest_credit', date:m(5), amount:4625, units:null, navPrice:null, rate:null, tenure:null});
+  for(let i=15;i>=1;i--){
+    state.transactions.push({id:uid('txn'), assetId:a7.id, type:'sip', date:m(i), amount:4000, units: 4000/(45+ i*0.6), navPrice: 45+ (15-i)*0.6, rate:null, tenure:null});
+  }
+  // Digital gold: a few grams bought over time (price in INR per gram)
+  state.transactions.push({id:uid('txn'), assetId:a8.id, type:'buy', date:m(20), amount:50000, units:50000/6100, navPrice:6100, rate:null, tenure:null});
+  state.transactions.push({id:uid('txn'), assetId:a8.id, type:'buy', date:m(8), amount:30000, units:30000/6650, navPrice:6650, rate:null, tenure:null});
+  // US stock: priced and transacted in USD, converted automatically for the dashboard
+  state.transactions.push({id:uid('txn'), assetId:a9.id, type:'buy', date:m(16), amount:2000, units:2000/180, navPrice:180, rate:null, tenure:null});
+  state.transactions.push({id:uid('txn'), assetId:a9.id, type:'buy', date:m(7), amount:1500, units:1500/195, navPrice:195, rate:null, tenure:null});
+  state.transactions.push({id:uid('txn'), assetId:a9.id, type:'dividend', date:m(3), amount:12, units:null, navPrice:null, rate:null, tenure:null});
+
+  state.goals.push({
+    id:uid('goal'), name:'Retirement', targetAmount:30000000, targetDate: addMonths(todayISO(), 12*22),
+    accountId:acctSelf.id,
+    inflation:6, returnRate:11, stepup:10, equityNow:80, equityFinal:20, glideYears:5,
+    linkedAssetIds:[a1.id,a2.id,a3.id], manualValue:0
+  });
+  state.goals.push({
+    id:uid('goal'), name:"Child's Education", targetAmount:5000000, targetDate: addMonths(todayISO(), 12*10),
+    accountId:acctSpouse.id,
+    inflation:8, returnRate:10, stepup:8, equityNow:70, equityFinal:30, glideYears:4,
+    linkedAssetIds:[a7.id], manualValue:250000
+  });
+
+  showToast('Sample data loaded (2 accounts: Self & Spouse; includes Gold & a US Stock)');
+  renderAll();
+}
+document.getElementById('btn-sample-data').addEventListener('click', loadSampleData);
+
+/* ==========================================================================
+   PWA — install prompt + service worker (works when hosted over https;
+   gracefully no-ops when opened as a local file)
+   ========================================================================== */
+let deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', (e)=>{
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  const b1 = document.getElementById('btn-install-app');
+  const b2 = document.getElementById('btn-install-app-settings');
+  if (b1) b1.style.display = 'flex';
+  if (b2) b2.style.display = 'inline-flex';
+});
+function triggerInstallPrompt(){
+  if (!deferredInstallPrompt){
+    showToast("No one-tap install available here — use your browser menu → 'Add to Home screen' / 'Install app'");
+    return;
+  }
+  deferredInstallPrompt.prompt();
+  deferredInstallPrompt.userChoice.then(choice=>{
+    if (choice.outcome==='accepted') showToast('FinPlan installed!');
+    deferredInstallPrompt = null;
+    const b1 = document.getElementById('btn-install-app');
+    const b2 = document.getElementById('btn-install-app-settings');
+    if (b1) b1.style.display='none';
+    if (b2) b2.style.display='none';
+  });
+}
+window.addEventListener('appinstalled', ()=>{
+  showToast('FinPlan installed as an app');
+});
+if ('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    try{ navigator.serviceWorker.register('./sw.js').catch(()=>{}); }catch(e){ /* e.g. file:// origin — safe to ignore */ }
+  });
+}
+
+/* ==========================================================================
+   GOOGLE DRIVE BACKUP (Google Identity Services + Drive API, drive.file scope)
+   Requires the page to be hosted over https on a domain registered as an
+   "Authorized JavaScript origin" in your own Google Cloud OAuth Client.
+   ========================================================================== */
+let gdriveTokenClient = null;
+let gdriveAccessToken = null;
+let gdriveTokenExpiry = 0;
+
+function gdriveReady(){ return typeof google !== 'undefined' && google.accounts && google.accounts.oauth2; }
+function gdriveTokenFresh(){ return gdriveAccessToken && Date.now() < gdriveTokenExpiry - 30000; }
+
+function updateGDriveUI(connected){
+  const statusEl = document.getElementById('gdrive-status');
+  if (statusEl) statusEl.textContent = connected ? '✅ Connected to Google Drive' : 'Not connected';
+  const backupBtn = document.getElementById('btn-gdrive-backup');
+  const restoreBtn = document.getElementById('btn-gdrive-restore');
+  const signoutBtn = document.getElementById('btn-gdrive-signout');
+  const connectBtn = document.getElementById('btn-gdrive-connect');
+  if (backupBtn) backupBtn.disabled = !connected;
+  if (restoreBtn) restoreBtn.disabled = !connected;
+  if (signoutBtn) signoutBtn.style.display = connected ? 'inline-flex' : 'none';
+  if (connectBtn) connectBtn.textContent = connected ? 'Reconnect' : 'Connect Google Drive';
+}
+
+function connectGoogleDrive(){
+  const clientId = document.getElementById('gdrive-client-id').value.trim();
+  if (!clientId){ showToast('Paste your Google OAuth Client ID first (see setup steps above)'); return; }
+  if (!gdriveReady()){ showToast('Google sign-in script has not loaded yet — check your connection and try again in a moment'); return; }
+  try{
+    gdriveTokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: clientId,
+      scope: 'https://www.googleapis.com/auth/drive.file',
+      callback: (resp) => {
+        if (resp.error){ showToast('Google sign-in failed: '+resp.error); return; }
+        gdriveAccessToken = resp.access_token;
+        gdriveTokenExpiry = Date.now() + (resp.expires_in*1000);
+        updateGDriveUI(true);
+        showToast('Connected to Google Drive');
+      }
+    });
+    gdriveTokenClient.requestAccessToken({ prompt: gdriveAccessToken ? '' : 'consent' });
+  }catch(err){
+    showToast('Could not start Google sign-in — check that your Client ID and authorized origin are correct');
+    console.error(err);
+  }
+}
+
+function signOutGoogleDrive(){
+  if (gdriveAccessToken && gdriveReady() && google.accounts.oauth2.revoke){
+    google.accounts.oauth2.revoke(gdriveAccessToken, ()=>{});
+  }
+  gdriveAccessToken = null; gdriveTokenExpiry = 0;
+  ensureAutoBackupSettings();
+  if (state.settings.autoBackup.driveEnabled){
+    state.settings.autoBackup.driveEnabled = false;
+    clearInterval(autoBackupDriveInterval);
+  }
+  updateGDriveUI(false);
+  renderAutoBackupUI();
+  showToast('Disconnected from Google Drive');
+}
+
+async function backupToGoogleDrive(){
+  if (!gdriveTokenFresh()){ showToast('Please connect Google Drive first'); return; }
+  const filename = `finplan_backup_${todayISO()}_${Date.now()}.json`;
+  const content = JSON.stringify(state, null, 2);
+  const metadata = { name: filename, mimeType: 'application/json' };
+  try{
+    const form = new FormData();
+    form.append('metadata', new Blob([JSON.stringify(metadata)], {type:'application/json'}));
+    form.append('file', new Blob([content], {type:'application/json'}));
+    const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+      method:'POST',
+      headers: { Authorization: 'Bearer ' + gdriveAccessToken },
+      body: form
+    });
+    if (!res.ok) throw new Error('Upload failed: '+res.status);
+    showToast('Backed up to Google Drive: ' + filename);
+  }catch(err){
+    showToast('Google Drive backup failed — your sign-in may have expired, try reconnecting');
+    console.error(err);
+  }
+}
+
+async function listDriveBackups(){
+  const q = encodeURIComponent("(name contains 'finplan_backup' or name contains 'finplan_autobackup') and trashed=false");
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime)&orderBy=modifiedTime desc`, {
+    headers: { Authorization: 'Bearer ' + gdriveAccessToken }
+  });
+  if (!res.ok) throw new Error('List failed: '+res.status);
+  const data = await res.json();
+  return data.files || [];
+}
+
+// Find an existing Drive file by exact name (used by auto-backup to overwrite one canonical file
+// instead of creating a new timestamped file every cycle).
+async function driveFindFileByName(name){
+  const q = encodeURIComponent(`name = '${name}' and trashed = false`);
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`, {
+    headers: { Authorization: 'Bearer ' + gdriveAccessToken }
+  });
+  if (!res.ok) throw new Error('Search failed: '+res.status);
+  const data = await res.json();
+  return (data.files && data.files[0]) ? data.files[0].id : null;
+}
+async function driveUploadOrUpdateFile(name, content){
+  const existingId = await driveFindFileByName(name);
+  const metadata = { name, mimeType: 'application/json' };
+  const form = new FormData();
+  form.append('metadata', new Blob([JSON.stringify(metadata)], {type:'application/json'}));
+  form.append('file', new Blob([content], {type:'application/json'}));
+  const url = existingId
+    ? `https://www.googleapis.com/upload/drive/v3/files/${existingId}?uploadType=multipart`
+    : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`;
+  const res = await fetch(url, { method: existingId ? 'PATCH' : 'POST', headers: { Authorization: 'Bearer ' + gdriveAccessToken }, body: form });
+  if (!res.ok) throw new Error('Upload failed: '+res.status);
+  return res.json();
+}
+
+async function openGoogleDriveRestoreModal(){
+  if (!gdriveTokenFresh()){ showToast('Please connect Google Drive first'); return; }
+  openModalById('modal-gdrive-restore');
+  const listEl = document.getElementById('gdrive-restore-list');
+  listEl.innerHTML = 'Loading…';
+  try{
+    const files = await listDriveBackups();
+    if (files.length===0){ listEl.innerHTML = emptyState('No backups found', 'Use "Backup now" to create your first Drive backup.'); return; }
+    listEl.innerHTML = files.map(f=>`
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px dashed var(--card-border);">
+        <div><div style="font-weight:600;">${f.name}</div><div style="font-size:11.5px; color:var(--text-faint);">${new Date(f.modifiedTime).toLocaleString('en-IN')}</div></div>
+        <button class="btn btn-sm btn-primary" onclick="restoreFromDriveFile('${f.id}')">Restore</button>
+      </div>
+    `).join('');
+  }catch(err){
+    listEl.innerHTML = emptyState('Could not load backups', 'Check your connection and try again.');
+    console.error(err);
+  }
+}
+
+async function restoreFromDriveFile(fileId){
+  if (!confirm('This will replace all current data in this session with the selected backup. Continue?')) return;
+  try{
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+      headers: { Authorization: 'Bearer ' + gdriveAccessToken }
+    });
+    if (!res.ok) throw new Error('Download failed: '+res.status);
+    const data = await res.json();
+    if (!data.assets || !data.transactions) throw new Error('bad format');
+    state = { accounts: data.accounts||[], assets: data.assets||[], transactions: data.transactions||[], goals: data.goals||[], settings: data.settings||{usdInrRate:83.5, displayCurrency:'INR'}, meta: data.meta||{} };
+    ensureDefaultAccount();
+    ensureSettings();
+    currentAccountFilter = 'all';
+    closeModal('modal-gdrive-restore');
+    renderAll();
+    restartAutoBackupIntervals();
+    showToast('Restored from Google Drive');
+  }catch(err){
+    showToast('Restore failed — is this a valid FinPlan backup file?');
+    console.error(err);
+  }
+}
+
+/* ==========================================================================
+   AUTO BACKUP — Google Drive (single overwritten file) + local folder
+   (File System Access API, Chrome/Edge desktop). Debounced after every
+   change, plus a periodic safety-net interval, while this tab stays open.
+   ========================================================================== */
+let localBackupDirHandle = null;
+let autoBackupDebounceTimer = null;
+let autoBackupDriveInterval = null;
+let autoBackupLocalInterval = null;
+let lastDriveAutoSnapshot = null;
+let lastLocalAutoSnapshot = null;
+
+function supportsLocalFileSystem(){ return typeof window.showDirectoryPicker === 'function'; }
+
+function renderAutoBackupUI(){
+  ensureAutoBackupSettings();
+  const ab = state.settings.autoBackup;
+
+  document.querySelectorAll('#autobackup-drive-toggle button').forEach(b=>{
+    b.classList.toggle('active', (b.dataset.val==='on') === ab.driveEnabled);
+  });
+  document.querySelectorAll('#autobackup-local-toggle button').forEach(b=>{
+    b.classList.toggle('active', (b.dataset.val==='on') === ab.localEnabled);
+  });
+
+  const driveStatus = document.getElementById('autobackup-drive-status');
+  if (driveStatus){
+    if (!gdriveTokenFresh()) driveStatus.textContent = 'Not connected to Google Drive yet — connect above first.';
+    else if (ab.lastDriveBackupAt) driveStatus.textContent = `Last auto-backup: ${new Date(ab.lastDriveBackupAt).toLocaleString('en-IN')}`;
+    else driveStatus.textContent = ab.driveEnabled ? 'Enabled — waiting for the first backup.' : 'Connected. Turn on to start auto-backing up.';
+  }
+
+  const chooseFolderBtn = document.getElementById('btn-choose-local-folder');
+  const localToggle = document.getElementById('autobackup-local-toggle');
+  const localStatus = document.getElementById('autobackup-local-status');
+  if (!supportsLocalFileSystem()){
+    if (chooseFolderBtn){ chooseFolderBtn.disabled = true; chooseFolderBtn.textContent = 'Not supported in this browser'; }
+    if (localStatus) localStatus.textContent = 'Local folder auto-backup needs Chrome or Edge on desktop.';
+  } else if (localStatus){
+    if (localBackupDirHandle){
+      localToggle.style.display = 'flex';
+      localStatus.textContent = ab.lastLocalBackupAt
+        ? `Folder: "${localBackupDirHandle.name}" · Last auto-backup: ${new Date(ab.lastLocalBackupAt).toLocaleString('en-IN')}`
+        : `Folder: "${localBackupDirHandle.name}" selected. Turn on to start auto-backing up.`;
+    } else {
+      localStatus.textContent = 'No folder selected yet.';
+    }
+  }
+}
+
+async function chooseLocalBackupFolder(){
+  if (!supportsLocalFileSystem()){ showToast("Your browser doesn't support picking a local folder — try Chrome or Edge on desktop."); return; }
+  try{
+    localBackupDirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+    ensureAutoBackupSettings();
+    document.getElementById('autobackup-local-toggle').style.display = 'flex';
+    renderAutoBackupUI();
+    showToast('Backup folder selected: ' + localBackupDirHandle.name);
+  }catch(err){
+    // user cancelled the picker — nothing to do
+  }
+}
+
+function setAutoBackupDrive(on){
+  ensureAutoBackupSettings();
+  if (on && !gdriveTokenFresh()){ showToast('Connect Google Drive first, above'); on = false; }
+  state.settings.autoBackup.driveEnabled = on;
+  renderAutoBackupUI();
+  restartAutoBackupIntervals();
+  if (on){ showToast('Auto-backup to Google Drive enabled'); performAutoBackup('drive'); }
+}
+function setAutoBackupLocal(on){
+  ensureAutoBackupSettings();
+  if (on && !localBackupDirHandle){ showToast('Choose a backup folder first'); on = false; }
+  state.settings.autoBackup.localEnabled = on;
+  renderAutoBackupUI();
+  restartAutoBackupIntervals();
+  if (on){ showToast('Auto-backup to local folder enabled'); performAutoBackup('local'); }
+}
+
+function restartAutoBackupIntervals(){
+  ensureAutoBackupSettings();
+  const ab = state.settings.autoBackup;
+  clearInterval(autoBackupDriveInterval);
+  clearInterval(autoBackupLocalInterval);
+  const ms = Math.max(ab.intervalMinutes||15, 5) * 60 * 1000;
+  if (ab.driveEnabled) autoBackupDriveInterval = setInterval(()=>performAutoBackup('drive'), ms);
+  if (ab.localEnabled) autoBackupLocalInterval = setInterval(()=>performAutoBackup('local'), ms);
+}
+
+// Called from renderAll() on every state-changing action; harmless if nothing actually
+// changed (performAutoBackup no-ops when the snapshot is identical to the last one saved).
+function scheduleDebouncedAutoBackup(){
+  ensureAutoBackupSettings();
+  const ab = state.settings.autoBackup;
+  if (!ab.driveEnabled && !ab.localEnabled) return;
+  clearTimeout(autoBackupDebounceTimer);
+  autoBackupDebounceTimer = setTimeout(()=>{
+    if (ab.driveEnabled) performAutoBackup('drive');
+    if (ab.localEnabled) performAutoBackup('local');
+  }, 8000);
+}
+
+// Attempts a silent (no popup) token refresh using the existing token client. Google may still
+// require a user gesture for this — if it's blocked, the cycle is simply skipped.
+function trySilentDriveRefresh(){
+  return new Promise(resolve=>{
+    if (!gdriveTokenClient){ resolve(false); return; }
+    try{
+      const originalCallback = gdriveTokenClient.callback;
+      gdriveTokenClient.callback = (resp)=>{
+        gdriveTokenClient.callback = originalCallback;
+        if (resp.error){ resolve(false); return; }
+        gdriveAccessToken = resp.access_token;
+        gdriveTokenExpiry = Date.now() + (resp.expires_in*1000);
+        updateGDriveUI(true);
+        resolve(true);
+      };
+      gdriveTokenClient.requestAccessToken({ prompt: '' });
+    }catch(e){ resolve(false); }
+  });
+}
+
+async function writeLocalAutoBackupFile(content){
+  if (!localBackupDirHandle) throw new Error('no folder selected');
+  const fileHandle = await localBackupDirHandle.getFileHandle('finplan_autobackup.json', { create: true });
+  const writable = await fileHandle.createWritable();
+  await writable.write(content);
+  await writable.close();
+}
+
+async function performAutoBackup(target){
+  ensureAutoBackupSettings();
+  const ab = state.settings.autoBackup;
+  const snapshot = JSON.stringify(state);
+
+  if (target==='drive'){
+    if (!ab.driveEnabled) return;
+    if (snapshot === lastDriveAutoSnapshot) return;
+    if (!gdriveTokenFresh()){
+      const refreshed = await trySilentDriveRefresh();
+      if (!refreshed){ renderAutoBackupUI(); return; }
+    }
+    try{
+      await driveUploadOrUpdateFile('finplan_autobackup.json', snapshot);
+      lastDriveAutoSnapshot = snapshot;
+      ab.lastDriveBackupAt = Date.now();
+    }catch(err){ console.error('Auto-backup (Drive) failed', err); }
+  } else if (target==='local'){
+    if (!ab.localEnabled || !localBackupDirHandle) return;
+    if (snapshot === lastLocalAutoSnapshot) return;
+    try{
+      await writeLocalAutoBackupFile(snapshot);
+      lastLocalAutoSnapshot = snapshot;
+      ab.lastLocalBackupAt = Date.now();
+    }catch(err){ console.error('Auto-backup (local) failed', err); }
+  }
+  renderAutoBackupUI();
+}
+
+/* ==========================================================================
+   MASTER RENDER
+   ========================================================================== */
+function renderAll(){
+  ensureSettings();
+  renderAccountSwitcher();
+  renderCurrencyToggle();
+  renderDashboard();
+  renderTransactionsPage();
+  renderAssetsPage();
+  renderAccountsPage();
+  renderGoalsPage();
+  renderIncomePage();
+  renderFyReportPage();
+  renderNavUpdatePage();
+  renderSettingsPage();
+  renderAutoBackupUI();
+  scheduleDebouncedAutoBackup();
+}
+renderAll();
+</script>
+</body>
+</html>
