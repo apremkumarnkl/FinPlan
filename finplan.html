@@ -185,6 +185,7 @@ tbody tr:hover{background:rgba(255,255,255,.02);}
 .badge-ssy{background:rgba(236,72,153,.15); color:#ec4899;}
 .badge-nps{background:rgba(167,139,250,.15); color:var(--hybrid);}
 .badge-chit{background:rgba(217,119,6,.16); color:#d97706;}
+.badge-elss{background:rgba(22,163,74,.15); color:#16a34a;}
 .fx-hint{font-size:11.5px; color:var(--text-faint);}
 .native-amt{font-size:11px; color:var(--text-faint); display:block; margin-top:2px;}
 .cell-value{display:inline-flex; flex-direction:column; align-items:flex-end;}
@@ -610,11 +611,21 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
       </div>
 
       <div class="section-title" style="margin-top:24px;">Auto backup</div>
-      <div class="warn-box">⚠ Auto-backup only runs while this tab stays open — it can't run in the background after you close it. It writes a single, continuously-updated file (not a new file every time), a few seconds after any change and again periodically as a safety net.</div>
-      <div class="grid grid-2">
+      <div class="warn-box">⚠ Auto-backup only runs while this tab stays open — it can't run in the background after you close it.</div>
+      <div class="grid grid-4">
+        <div class="card">
+          <div class="card-title">Auto-save to this browser</div>
+          <p style="color:var(--text-dim); font-size:12.5px;">Saves automatically to this browser's local storage, so refreshing or reopening the tab doesn't lose your data. Scoped to this exact browser and page address only — it won't follow you to another device, browser, or file location, and it can't run inside Claude.ai's own preview panel.</p>
+          <div class="pill-toggle" id="localstorage-toggle" style="margin:10px 0;">
+            <button data-val="off" onclick="setAutoSaveLocalStorage(false)">Off</button>
+            <button data-val="on" onclick="setAutoSaveLocalStorage(true)">On</button>
+          </div>
+          <div class="fx-hint" id="localstorage-status"></div>
+          <button class="btn btn-ghost btn-sm" onclick="manualClearLocalStorage()" style="margin-top:8px;">Clear saved copy</button>
+        </div>
         <div class="card">
           <div class="card-title">Auto-backup to Google Drive</div>
-          <p style="color:var(--text-dim); font-size:12.5px;">Requires Google Drive to be connected above. Keeps a single file, <code>finplan_autobackup.json</code>, up to date in your Drive.</p>
+          <p style="color:var(--text-dim); font-size:12.5px;">Requires Google Drive to be connected above. Keeps a single file, <code>finplan_autobackup.json</code>, up to date in your Drive. Works on mobile/Android too, since it's just network requests.</p>
           <div class="pill-toggle" id="autobackup-drive-toggle" style="margin:10px 0;">
             <button data-val="off" onclick="setAutoBackupDrive(false)">Off</button>
             <button data-val="on" onclick="setAutoBackupDrive(true)">On</button>
@@ -623,13 +634,23 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
         </div>
         <div class="card">
           <div class="card-title">Auto-backup to a local folder</div>
-          <p style="color:var(--text-dim); font-size:12.5px;">Pick a folder once — FinPlan keeps <code>finplan_autobackup.json</code> updated there directly, no repeated download prompts. Chrome/Edge on desktop only.</p>
+          <p style="color:var(--text-dim); font-size:12.5px;">Pick a folder once — FinPlan keeps <code>finplan_autobackup.json</code> updated there directly, no repeated prompts. <strong>Desktop Chrome/Edge only</strong> — Android/mobile browsers don't support this yet. Use "Auto-download backup" instead on mobile.</p>
           <button class="btn" id="btn-choose-local-folder" onclick="chooseLocalBackupFolder()" style="margin-top:6px;">📁 Choose backup folder</button>
           <div class="pill-toggle" id="autobackup-local-toggle" style="margin:10px 0; display:none;">
             <button data-val="off" onclick="setAutoBackupLocal(false)">Off</button>
             <button data-val="on" onclick="setAutoBackupLocal(true)">On</button>
           </div>
           <div class="fx-hint" id="autobackup-local-status"></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Auto-download backup</div>
+          <p style="color:var(--text-dim); font-size:12.5px;"><strong>Works everywhere, including mobile/Android</strong> — periodically saves a dated JSON file straight to your device's Downloads folder using the ordinary browser download mechanism. Each save is a new file (it can't overwrite on mobile), so it runs every few hours rather than after every change — clear out old ones occasionally.</p>
+          <div class="pill-toggle" id="autobackup-download-toggle" style="margin:10px 0;">
+            <button data-val="off" onclick="setAutoBackupDownload(false)">Off</button>
+            <button data-val="on" onclick="setAutoBackupDownload(true)">On</button>
+          </div>
+          <div class="fx-hint" id="autobackup-download-status">Off.</div>
+          <button class="btn btn-sm" onclick="downloadBackupNow()" style="margin-top:8px;">⬇ Download a copy now</button>
         </div>
       </div>
 
@@ -726,6 +747,7 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
         <label>Type</label>
         <select id="asset-type" onchange="onAssetTypeChange()">
           <option value="equity_mf">Mutual Fund — Equity</option>
+          <option value="elss">ELSS (Tax Saver) Mutual Fund</option>
           <option value="debt_mf">Mutual Fund — Debt</option>
           <option value="hybrid_mf">Mutual Fund — Hybrid</option>
           <option value="gold_mf">Mutual Fund / ETF — Gold</option>
@@ -929,15 +951,19 @@ function ensureSettings(){
   if (!state.settings.displayCurrency) state.settings.displayCurrency = 'INR';
   if (state.settings.autoFetchFx === undefined) state.settings.autoFetchFx = false;
   if (state.settings.fxLastUpdated === undefined) state.settings.fxLastUpdated = null;
+  if (state.settings.autoSaveLocalStorage === undefined) state.settings.autoSaveLocalStorage = true;
 }
 function ensureAutoBackupSettings(){
   ensureSettings();
   if (!state.settings.autoBackup){
     state.settings.autoBackup = {
-      driveEnabled: false, localEnabled: false, intervalMinutes: 15,
-      lastDriveBackupAt: null, lastLocalBackupAt: null
+      driveEnabled: false, localEnabled: false, downloadEnabled: false, intervalMinutes: 15,
+      lastDriveBackupAt: null, lastLocalBackupAt: null, lastDownloadBackupAt: null, downloadCount: 0
     };
   }
+  if (state.settings.autoBackup.downloadEnabled === undefined) state.settings.autoBackup.downloadEnabled = false;
+  if (state.settings.autoBackup.lastDownloadBackupAt === undefined) state.settings.autoBackup.lastDownloadBackupAt = null;
+  if (state.settings.autoBackup.downloadCount === undefined) state.settings.autoBackup.downloadCount = 0;
 }
 function getExchangeRate(){ ensureSettings(); return state.settings.usdInrRate; }
 function getDisplayCurrency(){ ensureSettings(); return state.settings.displayCurrency; }
@@ -984,22 +1010,26 @@ const ASSET_TYPE_LABELS = {
   stock: 'Stock', us_stock: 'US Stock', bond: 'Corporate Bond', fd: 'Fixed Deposit',
   ppf: 'PPF (Public Provident Fund)', ssy: 'Sukanya Samriddhi Yojana (SSY)',
   rd: 'Recurring Deposit (RD)', nps: 'NPS (National Pension System)',
-  chit: 'Chit Fund / Kitty'
+  chit: 'Chit Fund / Kitty', elss: 'ELSS (Tax Saver) Mutual Fund'
 };
 const ASSET_TYPE_BADGE = {
   equity_mf: 'badge-equity', debt_mf: 'badge-debt', hybrid_mf: 'badge-hybrid',
   gold_mf: 'badge-gold', gold: 'badge-gold',
   stock: 'badge-stock', us_stock: 'badge-us-stock', bond: 'badge-bond', fd: 'badge-fd',
-  ppf: 'badge-ppf', ssy: 'badge-ssy', rd: 'badge-fd', nps: 'badge-nps', chit: 'badge-chit'
+  ppf: 'badge-ppf', ssy: 'badge-ssy', rd: 'badge-fd', nps: 'badge-nps', chit: 'badge-chit',
+  elss: 'badge-elss'
 };
 // which broad allocation bucket each asset type maps to
 const ALLOC_BUCKET = {
-  equity_mf: 'Equity', stock: 'Equity', us_stock: 'Equity',
+  equity_mf: 'Equity', stock: 'Equity', us_stock: 'Equity', elss: 'Equity',
   debt_mf: 'Debt', fd: 'Debt', ppf: 'Debt', ssy: 'Debt', rd: 'Debt',
   bond: 'Bonds',
   hybrid_mf: 'Hybrid', gold_mf: 'Gold', gold: 'Gold',
   nps: 'Hybrid', chit: 'Chit Funds'
 };
+// ELSS mutual funds have a 3-year lock-in per investment (each SIP/lump sum tranche
+// unlocks 3 years after its own date), unlike a regular equity MF.
+const ELSS_LOCKIN_MONTHS = 36;
 // default pricing currency by asset type (user can still override per-asset)
 const DEFAULT_ASSET_CURRENCY = { us_stock: 'USD' };
 // asset types that behave like a fixed/compounding deposit (no NAV, no units — just
@@ -1146,6 +1176,48 @@ function priceAsOf(asset, cutoffDate){
     .sort((a,b)=>new Date(b.date)-new Date(a.date));
   return past.length ? past[0].navPrice : (asset.nav||0);
 }
+
+// ELSS lock-in tracker: each buy/SIP/switch-in tranche unlocks 3 years after its own date.
+// Redemptions are assumed to consume the oldest (already-unlocked, where possible) units
+// first, matching how funds typically process ELSS redemption requests in practice.
+function computeElssLockIn(asset){
+  const cutoff = todayISO();
+  const txns = state.transactions.filter(t=>t.assetId===asset.id).sort((a,b)=>new Date(a.date)-new Date(b.date));
+  let lots = []; // {date, units, unlockDate}
+  for(const t of txns){
+    const navp = t.navPrice || asset.nav || 0;
+    let u = t.units;
+    if ((u===null||u===undefined||u==='') && navp>0 && t.amount) u = t.amount/navp;
+    u = Number(u)||0;
+    if (['buy','sip','switch_in'].includes(t.type)){
+      lots.push({ date:t.date, units:u, unlockDate: addMonths(t.date, ELSS_LOCKIN_MONTHS) });
+    } else if (['redeem','switch_out','sell'].includes(t.type)){
+      let remaining = u;
+      while(remaining>1e-9 && lots.length){
+        const take = Math.min(lots[0].units, remaining);
+        lots[0].units -= take; remaining -= take;
+        if (lots[0].units<=1e-9) lots.shift();
+      }
+    } else if (t.type==='dividend_reinvest'){
+      lots.push({ date:t.date, units:u, unlockDate: addMonths(t.date, ELSS_LOCKIN_MONTHS) });
+    }
+  }
+  let lockedUnits=0, unlockedUnits=0, nextUnlockDate=null;
+  for(const lot of lots){
+    if (lot.unlockDate > cutoff){
+      lockedUnits += lot.units;
+      if (!nextUnlockDate || lot.unlockDate < nextUnlockDate) nextUnlockDate = lot.unlockDate;
+    } else {
+      unlockedUnits += lot.units;
+    }
+  }
+  const price = priceAsOf(asset, cutoff);
+  return {
+    lockedUnits, unlockedUnits, nextUnlockDate,
+    lockedValue: lockedUnits*price, unlockedValue: unlockedUnits*price
+  };
+}
+
 
 function computeHoldings(assetsOverride, asOfDate){
   // returns array of {asset, units, invested (net cash in, display currency), currentValue, gain, gainPct,
@@ -1671,15 +1743,22 @@ function deleteAccount(id){
 function renderAssetsPage(){
   const el = document.getElementById('assets-table');
   const assets = getFilteredAssets();
-  if (assets.length===0){ el.innerHTML = emptyState('No assets registered', 'Add mutual funds, stocks, bonds, gold, FDs, RDs, PPF, SSY, NPS or chit funds you want to track.'); return; }
+  if (assets.length===0){ el.innerHTML = emptyState('No assets registered', 'Add mutual funds (including ELSS), stocks, bonds, gold, FDs, RDs, PPF, SSY, NPS or chit funds you want to track.'); return; }
   const holdingsAll = computeHoldings(assets);
   el.innerHTML = `<table><thead><tr><th>Name</th><th>Account</th><th>Type</th><th>Current NAV/Price</th><th>Holding Value</th><th></th></tr></thead><tbody>
     ${assets.map(a=>{
       const h = holdingsAll.find(x=>x.asset.id===a.id);
       const cur = a.currency||'INR';
       const showNative = h && h.nativeCurrency !== getDisplayCurrency();
+      let elssLine = '';
+      if (a.type==='elss' && h){
+        const lock = computeElssLockIn(a);
+        if (lock.lockedUnits>1e-6 || lock.unlockedUnits>1e-6){
+          elssLine = `<div class="native-amt">🔒 ${fmtMoney(lock.lockedValue)} locked${lock.nextUnlockDate?` · next unlock ${fmtDate(lock.nextUnlockDate)}`:''}${lock.unlockedValue>0?` · 🔓 ${fmtMoney(lock.unlockedValue)} free`:''}</div>`;
+        }
+      }
       return `<tr>
-        <td>${a.name}</td>
+        <td>${a.name}${elssLine}</td>
         <td>${accountTag(a.accountId)}</td>
         <td><span class="badge ${ASSET_TYPE_BADGE[a.type]}">${assetTypeLabel(a)}</span></td>
         <td>${UNIT_LESS_TYPES.includes(a.type)?'—':(CURRENCY_SYMBOLS[cur]||'₹')+fmtNum(a.nav,4)}</td>
@@ -2686,6 +2765,8 @@ function confirmWipe(){
   clearInterval(fxAutoFetchInterval);
   lastDriveAutoSnapshot = null;
   lastLocalAutoSnapshot = null;
+  clearTimeout(localStorageSaveTimer);
+  clearLocalStorageData(); // otherwise the next page load would auto-restore the wiped data
   state = { accounts:[], assets:[], transactions:[], goals:[], settings:{usdInrRate:83.5, displayCurrency:'INR'}, meta:{createdAt:new Date().toISOString()} };
   currentAccountFilter = 'all';
   renderAll();
@@ -2719,6 +2800,8 @@ function loadSampleData(){
   const a13 = {id:uid('asset'), name:'NPS (Auto Choice)', type:'nps', npsTier:'tier1', nav:24.80, accountId:acctSelf.id, currency:'INR'};
   const a14 = {id:uid('asset'), name:'NPS Tier 2 (Equity)', type:'nps', npsTier:'tier2', nav:18.40, accountId:acctSelf.id, currency:'INR'};
   const a15 = {id:uid('asset'), name:'Friends Circle Chit (20L, 20mo)', type:'chit', nav:0, accountId:acctSelf.id, currency:'INR'};
+  const a16 = {id:uid('asset'), name:'Mirae Asset Tax Saver Fund (ELSS)', type:'elss', nav:38.60, accountId:acctSelf.id, currency:'INR'};
+  state.assets.push(a16);
   state.assets.push(a1,a2,a3,a4,a5,a6,a7,a8,a9,a10,a11,a12,a13,a14,a15);
 
   function m(dateOffsetMonths){ return addMonths(todayISO(), -dateOffsetMonths); }
@@ -2781,11 +2864,17 @@ function loadSampleData(){
     state.transactions.push({id:uid('txn'), assetId:a15.id, type:'installment', date:m(i), amount:10000, units:null, navPrice:null, rate:null, tenure:null});
   }
 
+  // ELSS: monthly SIPs going back 4 years — the oldest year's worth is past the 3-year
+  // lock-in and free to redeem, the rest is still locked (demonstrates the lock-in tracker).
+  for(let i=48;i>=1;i--){
+    state.transactions.push({id:uid('txn'), assetId:a16.id, type:'sip', date:m(i), amount:6000, units: 6000/(28+(48-i)*0.22), navPrice: 28+(48-i)*0.22, rate:null, tenure:null});
+  }
+
   state.goals.push({
     id:uid('goal'), name:'Retirement', targetAmount:30000000, targetDate: addMonths(todayISO(), 12*22),
     accountId:acctSelf.id,
     inflation:6, returnRate:11, stepup:10, equityNow:80, equityFinal:20, glideYears:5,
-    linkedAssetIds:[a1.id,a2.id,a3.id,a10.id,a13.id], manualValue:0
+    linkedAssetIds:[a1.id,a2.id,a3.id,a10.id,a13.id,a16.id], manualValue:0
   });
   state.goals.push({
     id:uid('goal'), name:"Child's Education", targetAmount:5000000, targetDate: addMonths(todayISO(), 12*10),
@@ -2794,7 +2883,7 @@ function loadSampleData(){
     linkedAssetIds:[a7.id], manualValue:250000
   });
 
-  showToast('Sample data loaded — now includes Gold, US Stock, PPF, SSY, RD, NPS (Tier 1 & 2) and a Chit Fund');
+  showToast('Sample data loaded — now includes Gold, US Stock, PPF, SSY, RD, NPS (Tier 1 & 2), a Chit Fund and ELSS');
   renderAll();
 }
 document.getElementById('btn-sample-data').addEventListener('click', loadSampleData);
@@ -3001,16 +3090,20 @@ async function restoreFromDriveFile(fileId){
 }
 
 /* ==========================================================================
-   AUTO BACKUP — Google Drive (single overwritten file) + local folder
-   (File System Access API, Chrome/Edge desktop). Debounced after every
-   change, plus a periodic safety-net interval, while this tab stays open.
+   AUTO BACKUP — Google Drive (single overwritten file), local folder
+   (File System Access API, Chrome/Edge desktop), and auto-download (works
+   on any device including mobile/Android, by saving periodically to the
+   device's Downloads folder). Debounced after every change for Drive/folder,
+   plus a periodic safety-net interval for all three, while this tab stays open.
    ========================================================================== */
 let localBackupDirHandle = null;
 let autoBackupDebounceTimer = null;
 let autoBackupDriveInterval = null;
 let autoBackupLocalInterval = null;
+let autoBackupDownloadInterval = null;
 let lastDriveAutoSnapshot = null;
 let lastLocalAutoSnapshot = null;
+let lastDownloadAutoSnapshot = null;
 
 function supportsLocalFileSystem(){ return typeof window.showDirectoryPicker === 'function'; }
 
@@ -3023,6 +3116,9 @@ function renderAutoBackupUI(){
   });
   document.querySelectorAll('#autobackup-local-toggle button').forEach(b=>{
     b.classList.toggle('active', (b.dataset.val==='on') === ab.localEnabled);
+  });
+  document.querySelectorAll('#autobackup-download-toggle button').forEach(b=>{
+    b.classList.toggle('active', (b.dataset.val==='on') === ab.downloadEnabled);
   });
 
   const driveStatus = document.getElementById('autobackup-drive-status');
@@ -3037,7 +3133,7 @@ function renderAutoBackupUI(){
   const localStatus = document.getElementById('autobackup-local-status');
   if (!supportsLocalFileSystem()){
     if (chooseFolderBtn){ chooseFolderBtn.disabled = true; chooseFolderBtn.textContent = 'Not supported in this browser'; }
-    if (localStatus) localStatus.textContent = 'Local folder auto-backup needs Chrome or Edge on desktop.';
+    if (localStatus) localStatus.textContent = "Not supported here — this needs Chrome or Edge on desktop (Android/mobile browsers don't expose this yet). Use \"Auto-download backup\" below instead.";
   } else if (localStatus){
     if (localBackupDirHandle){
       localToggle.style.display = 'flex';
@@ -3048,10 +3144,17 @@ function renderAutoBackupUI(){
       localStatus.textContent = 'No folder selected yet.';
     }
   }
+
+  const downloadStatus = document.getElementById('autobackup-download-status');
+  if (downloadStatus){
+    downloadStatus.textContent = ab.lastDownloadBackupAt
+      ? `Last auto-download: ${new Date(ab.lastDownloadBackupAt).toLocaleString('en-IN')} (${ab.downloadCount||0} file${(ab.downloadCount||0)===1?'':'s'} so far)`
+      : (ab.downloadEnabled ? 'Enabled — waiting for the first download.' : 'Off.');
+  }
 }
 
 async function chooseLocalBackupFolder(){
-  if (!supportsLocalFileSystem()){ showToast("Your browser doesn't support picking a local folder — try Chrome or Edge on desktop."); return; }
+  if (!supportsLocalFileSystem()){ showToast("Your browser doesn't support picking a local folder — try Chrome or Edge on desktop, or use Auto-download backup below."); return; }
   try{
     localBackupDirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
     ensureAutoBackupSettings();
@@ -3079,19 +3182,32 @@ function setAutoBackupLocal(on){
   restartAutoBackupIntervals();
   if (on){ showToast('Auto-backup to local folder enabled'); performAutoBackup('local'); }
 }
+function setAutoBackupDownload(on){
+  ensureAutoBackupSettings();
+  state.settings.autoBackup.downloadEnabled = on;
+  renderAutoBackupUI();
+  restartAutoBackupIntervals();
+  if (on){ showToast('Auto-download backup enabled — works on any device'); performAutoBackup('download'); }
+}
 
 function restartAutoBackupIntervals(){
   ensureAutoBackupSettings();
   const ab = state.settings.autoBackup;
   clearInterval(autoBackupDriveInterval);
   clearInterval(autoBackupLocalInterval);
+  clearInterval(autoBackupDownloadInterval);
   const ms = Math.max(ab.intervalMinutes||15, 5) * 60 * 1000;
   if (ab.driveEnabled) autoBackupDriveInterval = setInterval(()=>performAutoBackup('drive'), ms);
   if (ab.localEnabled) autoBackupLocalInterval = setInterval(()=>performAutoBackup('local'), ms);
+  // Downloads create a new file each time rather than overwriting, so this runs on a longer,
+  // fixed cadence regardless of the shared interval setting, to avoid flooding the Downloads folder.
+  if (ab.downloadEnabled) autoBackupDownloadInterval = setInterval(()=>performAutoBackup('download'), 4*60*60*1000);
 }
 
 // Called from renderAll() on every state-changing action; harmless if nothing actually
 // changed (performAutoBackup no-ops when the snapshot is identical to the last one saved).
+// Auto-download deliberately isn't included here — it only fires on its own periodic timer
+// or a manual trigger, so rapid edits don't flood the Downloads folder with files.
 function scheduleDebouncedAutoBackup(){
   ensureAutoBackupSettings();
   const ab = state.settings.autoBackup;
@@ -3131,6 +3247,19 @@ async function writeLocalAutoBackupFile(content){
   await writable.close();
 }
 
+// Manual one-off trigger for the "Download a copy now" button — always produces a file
+// regardless of whether auto-download is toggled on, and doesn't dedupe against the last snapshot.
+function downloadBackupNow(){
+  ensureAutoBackupSettings();
+  const snapshot = JSON.stringify(state);
+  downloadFile(`finplan_autobackup_${todayISO()}_${Date.now()}.json`, snapshot, 'application/json');
+  lastDownloadAutoSnapshot = snapshot;
+  state.settings.autoBackup.lastDownloadBackupAt = Date.now();
+  state.settings.autoBackup.downloadCount = (state.settings.autoBackup.downloadCount||0) + 1;
+  renderAutoBackupUI();
+  showToast('Backup downloaded');
+}
+
 async function performAutoBackup(target){
   ensureAutoBackupSettings();
   const ab = state.settings.autoBackup;
@@ -3156,8 +3285,113 @@ async function performAutoBackup(target){
       lastLocalAutoSnapshot = snapshot;
       ab.lastLocalBackupAt = Date.now();
     }catch(err){ console.error('Auto-backup (local) failed', err); }
+  } else if (target==='download'){
+    if (!ab.downloadEnabled) return;
+    if (snapshot === lastDownloadAutoSnapshot) return;
+    try{
+      downloadFile(`finplan_autobackup_${todayISO()}_${Date.now()}.json`, snapshot, 'application/json');
+      lastDownloadAutoSnapshot = snapshot;
+      ab.lastDownloadBackupAt = Date.now();
+      ab.downloadCount = (ab.downloadCount||0) + 1;
+    }catch(err){ console.error('Auto-backup (download) failed', err); }
   }
   renderAutoBackupUI();
+}
+
+/* ==========================================================================
+   AUTO-SAVE TO THIS BROWSER (localStorage) — separate from JSON/Drive/local-
+   folder backups above. This persists your data automatically in the browser
+   you're using right now, so closing the tab or refreshing doesn't lose
+   anything. It's scoped to this exact browser + this exact page address —
+   opening the file from a different location, or a different browser/device,
+   starts fresh and won't see this data. It also won't work if you're viewing
+   this inside Claude.ai's own preview panel (browser storage is blocked
+   there) — it only works once the file is actually opened in a real browser,
+   e.g. by downloading it or hosting it somewhere.
+   ========================================================================== */
+const LOCAL_STORAGE_KEY = 'finplan_data_v1';
+let localStorageAvailable = true;
+try{
+  const testKey = '__finplan_test__';
+  window.localStorage.setItem(testKey, '1');
+  window.localStorage.removeItem(testKey);
+}catch(e){ localStorageAvailable = false; }
+
+let localStorageSaveTimer = null;
+let lastLocalStorageSnapshot = null;
+let lastLocalStorageSavedAt = null;
+
+function saveStateToLocalStorage(){
+  if (!localStorageAvailable) return;
+  ensureSettings();
+  if (!state.settings.autoSaveLocalStorage) return;
+  const snapshot = JSON.stringify(state);
+  if (snapshot === lastLocalStorageSnapshot) return;
+  try{
+    window.localStorage.setItem(LOCAL_STORAGE_KEY, snapshot);
+    lastLocalStorageSnapshot = snapshot;
+    lastLocalStorageSavedAt = Date.now();
+    renderLocalStorageUI();
+  }catch(e){
+    // e.g. storage quota exceeded, or private/incognito mode restrictions
+    console.error('Auto-save to this browser failed', e);
+  }
+}
+// Debounced — called from renderAll() on every state-changing action, but only
+// actually writes ~1.5s after the last change (and only if something changed).
+function scheduleLocalStorageSave(){
+  if (!localStorageAvailable) return;
+  ensureSettings();
+  if (!state.settings.autoSaveLocalStorage) return;
+  clearTimeout(localStorageSaveTimer);
+  localStorageSaveTimer = setTimeout(saveStateToLocalStorage, 1500);
+}
+function loadStateFromLocalStorage(){
+  if (!localStorageAvailable) return false;
+  try{
+    const raw = window.localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (!raw) return false;
+    const data = JSON.parse(raw);
+    if (!data.assets || !data.transactions) return false;
+    state = {
+      accounts: data.accounts||[], assets: data.assets||[], transactions: data.transactions||[],
+      goals: data.goals||[], settings: data.settings||{usdInrRate:83.5, displayCurrency:'INR'},
+      meta: data.meta||{}
+    };
+    lastLocalStorageSnapshot = raw;
+    return true;
+  }catch(e){ console.error('Restoring from this browser failed', e); return false; }
+}
+function clearLocalStorageData(){
+  if (!localStorageAvailable) return;
+  try{ window.localStorage.removeItem(LOCAL_STORAGE_KEY); }catch(e){}
+  lastLocalStorageSnapshot = null;
+  lastLocalStorageSavedAt = null;
+  renderLocalStorageUI();
+}
+function setAutoSaveLocalStorage(on){
+  ensureSettings();
+  state.settings.autoSaveLocalStorage = on;
+  renderLocalStorageUI();
+  if (on){ showToast('Auto-save to this browser enabled'); saveStateToLocalStorage(); }
+  else showToast('Auto-save to this browser turned off');
+}
+function renderLocalStorageUI(){
+  ensureSettings();
+  document.querySelectorAll('#localstorage-toggle button').forEach(b=>{
+    b.classList.toggle('active', (b.dataset.val==='on') === !!state.settings.autoSaveLocalStorage);
+  });
+  const statusEl = document.getElementById('localstorage-status');
+  if (statusEl){
+    if (!localStorageAvailable) statusEl.textContent = "Not available — this browser/context doesn't support local storage (this is normal if you're viewing this inside Claude.ai's preview panel).";
+    else if (!state.settings.autoSaveLocalStorage) statusEl.textContent = 'Off — refreshing or closing this tab will lose unsaved data.';
+    else statusEl.textContent = lastLocalStorageSavedAt ? `Last saved: ${new Date(lastLocalStorageSavedAt).toLocaleString('en-IN')}` : 'On — waiting for the first save.';
+  }
+}
+function manualClearLocalStorage(){
+  if (!confirm('This only clears the copy auto-saved in this browser — your current session data on screen is untouched. Continue?')) return;
+  clearLocalStorageData();
+  showToast('Cleared this browser\'s saved copy');
 }
 
 /* ==========================================================================
@@ -3177,9 +3411,13 @@ function renderAll(){
   renderNavUpdatePage();
   renderSettingsPage();
   renderAutoBackupUI();
+  renderLocalStorageUI();
   scheduleDebouncedAutoBackup();
+  scheduleLocalStorageSave();
 }
+const restoredFromLocalStorage = loadStateFromLocalStorage();
 renderAll();
+if (restoredFromLocalStorage) showToast('Restored your data from this browser');
 </script>
 </body>
 </html>
