@@ -196,6 +196,16 @@ tbody tr:hover{background:rgba(255,255,255,.02);}
 }
 .table-filter-input:focus{outline:none; border-color:var(--accent);}
 .table-filter-count{font-size:11.5px; color:var(--text-faint); white-space:nowrap;}
+.table-pagesize-select{
+  padding:8px 10px; border-radius:9px; border:1px solid var(--card-border);
+  background:var(--bg-soft); color:var(--text); font-size:12.5px; flex-shrink:0;
+}
+.table-pagination{
+  display:none; align-items:center; justify-content:center; gap:14px; margin-top:10px; padding-top:4px;
+}
+.table-pagination button{min-width:76px;}
+.table-pagination button:disabled{opacity:.4; cursor:not-allowed;}
+.table-pagination .page-label{font-size:12.5px; color:var(--text-dim); font-weight:600;}
 
 /* ---------- Responsive holdings table (Dashboard) ---------- */
 /* Below the breakpoint, each row becomes a stacked card instead of a scrolling table. */
@@ -383,9 +393,11 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
           <div class="card-title">Holdings</div>
           <div class="table-filter-bar">
             <input type="text" class="table-filter-input" id="holdings-table-search" placeholder="🔍 Filter holdings..." oninput="onTableFilterInput('holdings-table', this.value)">
+            <select class="table-pagesize-select" onchange="onTablePageSizeChange('holdings-table', this.value)"><option value="10">10/page</option><option value="25">25/page</option><option value="50">50/page</option><option value="all">All</option></select>
             <span class="table-filter-count" id="holdings-table-filter-count"></span>
           </div>
           <div class="table-wrap responsive-table" id="holdings-table"></div>
+          <div class="table-pagination" id="holdings-table-pagination"><button class="btn btn-sm btn-ghost page-prev" onclick="changeTablePage('holdings-table', -1)">‹ Prev</button><span class="page-label"></span><button class="btn btn-sm btn-ghost page-next" onclick="changeTablePage('holdings-table', 1)">Next ›</button></div>
         </div>
         <div class="card">
           <div class="card-title">Allocation</div>
@@ -396,9 +408,11 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
       <div class="section-title">Recent transactions</div>
       <div class="table-filter-bar">
         <input type="text" class="table-filter-input" id="recent-txns-search" placeholder="🔍 Filter..." oninput="onTableFilterInput('recent-txns', this.value)">
-        <span class="table-filter-count" id="recent-txns-filter-count"></span>
+        <select class="table-pagesize-select" onchange="onTablePageSizeChange('recent-txns', this.value)"><option value="10">10/page</option><option value="25">25/page</option><option value="50">50/page</option><option value="all">All</option></select>
+            <span class="table-filter-count" id="recent-txns-filter-count"></span>
       </div>
       <div class="table-wrap" id="recent-txns"></div>
+          <div class="table-pagination" id="recent-txns-pagination"><button class="btn btn-sm btn-ghost page-prev" onclick="changeTablePage('recent-txns', -1)">‹ Prev</button><span class="page-label"></span><button class="btn btn-sm btn-ghost page-next" onclick="changeTablePage('recent-txns', 1)">Next ›</button></div>
     </div>
 
     <!-- TRANSACTIONS -->
@@ -415,9 +429,11 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
       </div>
       <div class="table-filter-bar">
         <input type="text" class="table-filter-input" id="all-txns-table-search" placeholder="🔍 Filter by asset, type, date..." oninput="onTableFilterInput('all-txns-table', this.value)">
-        <span class="table-filter-count" id="all-txns-table-filter-count"></span>
+        <select class="table-pagesize-select" onchange="onTablePageSizeChange('all-txns-table', this.value)"><option value="10">10/page</option><option value="25">25/page</option><option value="50">50/page</option><option value="all">All</option></select>
+            <span class="table-filter-count" id="all-txns-table-filter-count"></span>
       </div>
       <div class="table-wrap" id="all-txns-table"></div>
+          <div class="table-pagination" id="all-txns-table-pagination"><button class="btn btn-sm btn-ghost page-prev" onclick="changeTablePage('all-txns-table', -1)">‹ Prev</button><span class="page-label"></span><button class="btn btn-sm btn-ghost page-next" onclick="changeTablePage('all-txns-table', 1)">Next ›</button></div>
     </div>
 
     <!-- ASSETS -->
@@ -431,9 +447,11 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
       </div>
       <div class="table-filter-bar">
         <input type="text" class="table-filter-input" id="assets-table-search" placeholder="🔍 Filter by name, type, account..." oninput="onTableFilterInput('assets-table', this.value)">
-        <span class="table-filter-count" id="assets-table-filter-count"></span>
+        <select class="table-pagesize-select" onchange="onTablePageSizeChange('assets-table', this.value)"><option value="10">10/page</option><option value="25">25/page</option><option value="50">50/page</option><option value="all">All</option></select>
+            <span class="table-filter-count" id="assets-table-filter-count"></span>
       </div>
       <div class="table-wrap" id="assets-table"></div>
+          <div class="table-pagination" id="assets-table-pagination"><button class="btn btn-sm btn-ghost page-prev" onclick="changeTablePage('assets-table', -1)">‹ Prev</button><span class="page-label"></span><button class="btn btn-sm btn-ghost page-next" onclick="changeTablePage('assets-table', 1)">Next ›</button></div>
     </div>
 
     <!-- ACCOUNTS -->
@@ -447,9 +465,11 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
       </div>
       <div class="table-filter-bar">
         <input type="text" class="table-filter-input" id="accounts-table-search" placeholder="🔍 Filter accounts..." oninput="onTableFilterInput('accounts-table', this.value)">
-        <span class="table-filter-count" id="accounts-table-filter-count"></span>
+        <select class="table-pagesize-select" onchange="onTablePageSizeChange('accounts-table', this.value)"><option value="10">10/page</option><option value="25">25/page</option><option value="50">50/page</option><option value="all">All</option></select>
+            <span class="table-filter-count" id="accounts-table-filter-count"></span>
       </div>
       <div class="table-wrap" id="accounts-table"></div>
+          <div class="table-pagination" id="accounts-table-pagination"><button class="btn btn-sm btn-ghost page-prev" onclick="changeTablePage('accounts-table', -1)">‹ Prev</button><span class="page-label"></span><button class="btn btn-sm btn-ghost page-next" onclick="changeTablePage('accounts-table', 1)">Next ›</button></div>
     </div>
 
     <!-- GOALS -->
@@ -490,17 +510,21 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
         <div class="card-title">Income by asset</div>
         <div class="table-filter-bar">
           <input type="text" class="table-filter-input" id="income-by-asset-table-search" placeholder="🔍 Filter..." oninput="onTableFilterInput('income-by-asset-table', this.value)">
-          <span class="table-filter-count" id="income-by-asset-table-filter-count"></span>
+          <select class="table-pagesize-select" onchange="onTablePageSizeChange('income-by-asset-table', this.value)"><option value="10">10/page</option><option value="25">25/page</option><option value="50">50/page</option><option value="all">All</option></select>
+            <span class="table-filter-count" id="income-by-asset-table-filter-count"></span>
         </div>
         <div class="table-wrap" id="income-by-asset-table"></div>
+          <div class="table-pagination" id="income-by-asset-table-pagination"><button class="btn btn-sm btn-ghost page-prev" onclick="changeTablePage('income-by-asset-table', -1)">‹ Prev</button><span class="page-label"></span><button class="btn btn-sm btn-ghost page-next" onclick="changeTablePage('income-by-asset-table', 1)">Next ›</button></div>
       </div>
 
       <div class="section-title">All income transactions</div>
       <div class="table-filter-bar">
         <input type="text" class="table-filter-input" id="income-table-search" placeholder="🔍 Filter by asset, type..." oninput="onTableFilterInput('income-table', this.value)">
-        <span class="table-filter-count" id="income-table-filter-count"></span>
+        <select class="table-pagesize-select" onchange="onTablePageSizeChange('income-table', this.value)"><option value="10">10/page</option><option value="25">25/page</option><option value="50">50/page</option><option value="all">All</option></select>
+            <span class="table-filter-count" id="income-table-filter-count"></span>
       </div>
       <div class="table-wrap" id="income-table"></div>
+          <div class="table-pagination" id="income-table-pagination"><button class="btn btn-sm btn-ghost page-prev" onclick="changeTablePage('income-table', -1)">‹ Prev</button><span class="page-label"></span><button class="btn btn-sm btn-ghost page-next" onclick="changeTablePage('income-table', 1)">Next ›</button></div>
     </div>
 
     <!-- FY REPORT -->
@@ -524,25 +548,31 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
       <div class="section-title">Asset-wise movement</div>
       <div class="table-filter-bar">
         <input type="text" class="table-filter-input" id="fy-asset-table-search" placeholder="🔍 Filter..." oninput="onTableFilterInput('fy-asset-table', this.value)">
-        <span class="table-filter-count" id="fy-asset-table-filter-count"></span>
+        <select class="table-pagesize-select" onchange="onTablePageSizeChange('fy-asset-table', this.value)"><option value="10">10/page</option><option value="25">25/page</option><option value="50">50/page</option><option value="all">All</option></select>
+            <span class="table-filter-count" id="fy-asset-table-filter-count"></span>
       </div>
       <div class="table-wrap" id="fy-asset-table"></div>
+          <div class="table-pagination" id="fy-asset-table-pagination"><button class="btn btn-sm btn-ghost page-prev" onclick="changeTablePage('fy-asset-table', -1)">‹ Prev</button><span class="page-label"></span><button class="btn btn-sm btn-ghost page-next" onclick="changeTablePage('fy-asset-table', 1)">Next ›</button></div>
 
       <div class="section-title">Realised capital gains (indicative, FIFO)</div>
       <div class="table-filter-bar">
         <input type="text" class="table-filter-input" id="fy-capgains-table-search" placeholder="🔍 Filter..." oninput="onTableFilterInput('fy-capgains-table', this.value)">
-        <span class="table-filter-count" id="fy-capgains-table-filter-count"></span>
+        <select class="table-pagesize-select" onchange="onTablePageSizeChange('fy-capgains-table', this.value)"><option value="10">10/page</option><option value="25">25/page</option><option value="50">50/page</option><option value="all">All</option></select>
+            <span class="table-filter-count" id="fy-capgains-table-filter-count"></span>
       </div>
       <div class="table-wrap" id="fy-capgains-table"></div>
+          <div class="table-pagination" id="fy-capgains-table-pagination"><button class="btn btn-sm btn-ghost page-prev" onclick="changeTablePage('fy-capgains-table', -1)">‹ Prev</button><span class="page-label"></span><button class="btn btn-sm btn-ghost page-next" onclick="changeTablePage('fy-capgains-table', 1)">Next ›</button></div>
 
       <div class="section-title">Interest &amp; dividend income this year</div>
       <div class="two-col">
         <div>
           <div class="table-filter-bar">
             <input type="text" class="table-filter-input" id="fy-income-table-search" placeholder="🔍 Filter..." oninput="onTableFilterInput('fy-income-table', this.value)">
+            <select class="table-pagesize-select" onchange="onTablePageSizeChange('fy-income-table', this.value)"><option value="10">10/page</option><option value="25">25/page</option><option value="50">50/page</option><option value="all">All</option></select>
             <span class="table-filter-count" id="fy-income-table-filter-count"></span>
           </div>
           <div class="table-wrap" id="fy-income-table"></div>
+          <div class="table-pagination" id="fy-income-table-pagination"><button class="btn btn-sm btn-ghost page-prev" onclick="changeTablePage('fy-income-table', -1)">‹ Prev</button><span class="page-label"></span><button class="btn btn-sm btn-ghost page-next" onclick="changeTablePage('fy-income-table', 1)">Next ›</button></div>
         </div>
         <div class="card">
           <div class="card-title">Interest vs Dividend split</div>
@@ -553,9 +583,11 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
       <div class="section-title">All transactions this year</div>
       <div class="table-filter-bar">
         <input type="text" class="table-filter-input" id="fy-txn-table-search" placeholder="🔍 Filter by asset, type, date..." oninput="onTableFilterInput('fy-txn-table', this.value)">
-        <span class="table-filter-count" id="fy-txn-table-filter-count"></span>
+        <select class="table-pagesize-select" onchange="onTablePageSizeChange('fy-txn-table', this.value)"><option value="10">10/page</option><option value="25">25/page</option><option value="50">50/page</option><option value="all">All</option></select>
+            <span class="table-filter-count" id="fy-txn-table-filter-count"></span>
       </div>
       <div class="table-wrap" id="fy-txn-table"></div>
+          <div class="table-pagination" id="fy-txn-table-pagination"><button class="btn btn-sm btn-ghost page-prev" onclick="changeTablePage('fy-txn-table', -1)">‹ Prev</button><span class="page-label"></span><button class="btn btn-sm btn-ghost page-next" onclick="changeTablePage('fy-txn-table', 1)">Next ›</button></div>
     </div>
 
     <!-- NAV UPDATE -->
@@ -574,9 +606,11 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
           <div class="card-title">Update prices individually</div>
           <div class="table-filter-bar">
             <input type="text" class="table-filter-input" id="nav-update-table-search" placeholder="🔍 Filter..." oninput="onTableFilterInput('nav-update-table', this.value)">
+            <select class="table-pagesize-select" onchange="onTablePageSizeChange('nav-update-table', this.value)"><option value="10">10/page</option><option value="25">25/page</option><option value="50">50/page</option><option value="all">All</option></select>
             <span class="table-filter-count" id="nav-update-table-filter-count"></span>
           </div>
           <div class="table-wrap" id="nav-update-table"></div>
+          <div class="table-pagination" id="nav-update-table-pagination"><button class="btn btn-sm btn-ghost page-prev" onclick="changeTablePage('nav-update-table', -1)">‹ Prev</button><span class="page-label"></span><button class="btn btn-sm btn-ghost page-next" onclick="changeTablePage('nav-update-table', 1)">Next ›</button></div>
         </div>
         <div class="card">
           <div class="card-title">NAVALL.txt fallback bulk update</div>
@@ -1529,44 +1563,82 @@ function emptyState(title, sub){
 }
 
 /* ==========================================================================
-   GENERIC TABLE FILTER — a small search box above any table filters its rows
-   by plain text match. Since tables are fully re-rendered from data on every
-   change, the current query per table is remembered here and re-applied
-   after each render (via applyStoredFilter), so the filter doesn't reset
-   itself as soon as something else changes.
+   GENERIC TABLE FILTER + PAGINATION — a small search box and Prev/Next
+   controls above/below any table. Since tables are fully re-rendered from
+   data on every change, the current query and page per table are remembered
+   here and re-applied after each render (via applyStoredFilter), so neither
+   resets itself as soon as something else changes.
    ========================================================================== */
 let tableFilterQueries = {};
+let tablePageState = {};
+const DEFAULT_TABLE_PAGE_SIZE = 10;
+
+function getTablePageState(tableWrapId){
+  if (!tablePageState[tableWrapId]) tablePageState[tableWrapId] = { page: 1, pageSize: DEFAULT_TABLE_PAGE_SIZE };
+  return tablePageState[tableWrapId];
+}
 function onTableFilterInput(tableWrapId, value){
   tableFilterQueries[tableWrapId] = value;
-  filterTableRows(tableWrapId, value);
+  getTablePageState(tableWrapId).page = 1;
+  applyTableFilterAndPagination(tableWrapId);
 }
-function filterTableRows(tableWrapId, query){
+function onTablePageSizeChange(tableWrapId, size){
+  const ps = getTablePageState(tableWrapId);
+  ps.pageSize = size==='all' ? Infinity : (parseInt(size) || DEFAULT_TABLE_PAGE_SIZE);
+  ps.page = 1;
+  applyTableFilterAndPagination(tableWrapId);
+}
+function changeTablePage(tableWrapId, delta){
+  getTablePageState(tableWrapId).page += delta;
+  applyTableFilterAndPagination(tableWrapId);
+}
+function applyTableFilterAndPagination(tableWrapId){
   const wrap = document.getElementById(tableWrapId);
   if (!wrap) return;
-  const q = (query||'').trim().toLowerCase();
-  const rows = wrap.querySelectorAll('tbody tr');
-  let visibleCount = 0;
-  rows.forEach(row=>{
-    const match = !q || row.innerText.toLowerCase().includes(q);
-    row.style.display = match ? '' : 'none';
-    if (match) visibleCount++;
-  });
+  const q = (tableFilterQueries[tableWrapId]||'').trim().toLowerCase();
+  const rows = Array.from(wrap.querySelectorAll('tbody tr'));
+  const matched = q ? rows.filter(row=>row.innerText.toLowerCase().includes(q)) : rows;
+  const ps = getTablePageState(tableWrapId);
+  const totalPages = Math.max(Math.ceil(matched.length / ps.pageSize) || 1, 1);
+  if (ps.page > totalPages) ps.page = totalPages;
+  if (ps.page < 1) ps.page = 1;
+  const startIdx = ps.pageSize===Infinity ? 0 : (ps.page-1)*ps.pageSize;
+  const endIdx = ps.pageSize===Infinity ? matched.length : startIdx+ps.pageSize;
+  const pageRows = matched.slice(startIdx, endIdx);
+  const pageRowSet = new Set(pageRows);
+
+  rows.forEach(row=>{ row.style.display = pageRowSet.has(row) ? '' : 'none'; });
+
   const countEl = document.getElementById(tableWrapId+'-filter-count');
   if (countEl){
-    countEl.textContent = q ? `${visibleCount} of ${rows.length} shown` : '';
+    if (matched.length===0) countEl.textContent = q ? 'No matches' : '';
+    else{
+      const shownEnd = Math.min(endIdx, matched.length);
+      countEl.textContent = `${startIdx+1}-${shownEnd} of ${matched.length}${q?' (filtered)':''}`;
+    }
+  }
+  const pagEl = document.getElementById(tableWrapId+'-pagination');
+  if (pagEl){
+    const label = pagEl.querySelector('.page-label');
+    const prevBtn = pagEl.querySelector('.page-prev');
+    const nextBtn = pagEl.querySelector('.page-next');
+    if (label) label.textContent = `Page ${ps.page} of ${totalPages}`;
+    if (prevBtn) prevBtn.disabled = ps.page<=1;
+    if (nextBtn) nextBtn.disabled = ps.page>=totalPages;
+    pagEl.style.display = (totalPages>1) ? 'flex' : 'none';
   }
 }
 // Call at the end of any render function right after a filterable table's innerHTML is set,
-// so an active search query survives the table being redrawn.
+// so an active search query + page survives the table being redrawn.
 function applyStoredFilter(tableWrapId){
-  const q = tableFilterQueries[tableWrapId];
-  if (q) filterTableRows(tableWrapId, q);
+  applyTableFilterAndPagination(tableWrapId);
 }
 function clearTableFilter(tableWrapId){
   tableFilterQueries[tableWrapId] = '';
+  getTablePageState(tableWrapId).page = 1;
   const input = document.getElementById(tableWrapId+'-search');
   if (input) input.value = '';
-  filterTableRows(tableWrapId, '');
+  applyTableFilterAndPagination(tableWrapId);
 }
 
 /* ==========================================================================

@@ -1,7 +1,7 @@
 // FinPlan service worker — enables "Install as app" on Android/Chrome and basic offline use.
 // All your financial data still lives only in the page's memory / your JSON backups;
 // this worker only caches the app SHELL (html/css/js/icons), never your data.
-const CACHE_NAME = 'finplan-shell-v15';
+const CACHE_NAME = 'finplan-shell-v16';
 const SHELL_FILES = [
   './finplan.html',
   './manifest.json',
