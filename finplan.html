@@ -3227,19 +3227,28 @@ async function backupToGoogleDrive(){
   const content = JSON.stringify(state, null, 2);
   const metadata = { name: filename, mimeType: 'application/json' };
   try{
-    const form = new FormData();
-    form.append('metadata', new Blob([JSON.stringify(metadata)], {type:'application/json'}));
-    form.append('file', new Blob([content], {type:'application/json'}));
+    const { body, contentType } = buildDriveMultipartBody(metadata, content, 'application/json');
     const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
       method:'POST',
-      headers: { Authorization: 'Bearer ' + gdriveAccessToken },
-      body: form
+      headers: { Authorization: 'Bearer ' + gdriveAccessToken, 'Content-Type': contentType },
+      body
     });
-    if (!res.ok) throw new Error('Upload failed: '+res.status);
+    if (!res.ok){
+      const errBody = await res.text().catch(()=>'');
+      const err = new Error('Upload failed: '+res.status+' '+errBody);
+      err.status = res.status;
+      throw err;
+    }
     showToast('Backed up to Google Drive: ' + filename);
   }catch(err){
-    showToast('Google Drive backup failed — your sign-in may have expired, try reconnecting');
-    console.error(err);
+    console.error('Google Drive backup error:', err);
+    if (err.status === 401 || err.status === 403){
+      showToast('Google Drive backup failed — your sign-in may have expired or lacks permission, try reconnecting');
+    } else if (!navigator.onLine){
+      showToast('Google Drive backup failed — you appear to be offline');
+    } else {
+      showToast('Google Drive backup failed — see browser console for details');
+    }
   }
 }
 
@@ -3264,17 +3273,42 @@ async function driveFindFileByName(name){
   const data = await res.json();
   return (data.files && data.files[0]) ? data.files[0].id : null;
 }
+// Builds the raw multipart/related body the Google Drive "uploadType=multipart" endpoint
+// actually expects. IMPORTANT: this is NOT the same as a browser FormData object (which
+// produces multipart/form-data — a different format the Drive API rejects for this endpoint).
+function buildDriveMultipartBody(metadata, content, mimeType){
+  const boundary = 'finplan_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+  const delimiter = `\r\n--${boundary}\r\n`;
+  const closeDelimiter = `\r\n--${boundary}--`;
+  const body =
+    delimiter +
+    'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+    JSON.stringify(metadata) +
+    delimiter +
+    `Content-Type: ${mimeType}\r\n\r\n` +
+    content +
+    closeDelimiter;
+  return { body, contentType: `multipart/related; boundary=${boundary}` };
+}
+
 async function driveUploadOrUpdateFile(name, content){
   const existingId = await driveFindFileByName(name);
   const metadata = { name, mimeType: 'application/json' };
-  const form = new FormData();
-  form.append('metadata', new Blob([JSON.stringify(metadata)], {type:'application/json'}));
-  form.append('file', new Blob([content], {type:'application/json'}));
+  const { body, contentType } = buildDriveMultipartBody(metadata, content, 'application/json');
   const url = existingId
     ? `https://www.googleapis.com/upload/drive/v3/files/${existingId}?uploadType=multipart`
     : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`;
-  const res = await fetch(url, { method: existingId ? 'PATCH' : 'POST', headers: { Authorization: 'Bearer ' + gdriveAccessToken }, body: form });
-  if (!res.ok) throw new Error('Upload failed: '+res.status);
+  const res = await fetch(url, {
+    method: existingId ? 'PATCH' : 'POST',
+    headers: { Authorization: 'Bearer ' + gdriveAccessToken, 'Content-Type': contentType },
+    body
+  });
+  if (!res.ok){
+    const errBody = await res.text().catch(()=>'');
+    const err = new Error('Upload failed: '+res.status+' '+errBody);
+    err.status = res.status;
+    throw err;
+  }
   return res.json();
 }
 
