@@ -189,6 +189,13 @@ tbody tr:hover{background:rgba(255,255,255,.02);}
 .fx-hint{font-size:11.5px; color:var(--text-faint);}
 .native-amt{font-size:11px; color:var(--text-faint); display:block; margin-top:2px;}
 .cell-value{display:inline-flex; flex-direction:column; align-items:flex-end;}
+.table-filter-bar{display:flex; align-items:center; gap:10px; margin-bottom:10px; flex-wrap:wrap;}
+.table-filter-input{
+  flex:1; min-width:180px; max-width:320px; padding:8px 12px; border-radius:9px;
+  border:1px solid var(--card-border); background:var(--bg-soft); color:var(--text); font-size:13px;
+}
+.table-filter-input:focus{outline:none; border-color:var(--accent);}
+.table-filter-count{font-size:11.5px; color:var(--text-faint); white-space:nowrap;}
 
 /* ---------- Responsive holdings table (Dashboard) ---------- */
 /* Below the breakpoint, each row becomes a stacked card instead of a scrolling table. */
@@ -374,6 +381,10 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
       <div class="two-col" style="margin-top:16px;">
         <div class="card">
           <div class="card-title">Holdings</div>
+          <div class="table-filter-bar">
+            <input type="text" class="table-filter-input" id="holdings-table-search" placeholder="🔍 Filter holdings..." oninput="onTableFilterInput('holdings-table', this.value)">
+            <span class="table-filter-count" id="holdings-table-filter-count"></span>
+          </div>
           <div class="table-wrap responsive-table" id="holdings-table"></div>
         </div>
         <div class="card">
@@ -383,6 +394,10 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
       </div>
 
       <div class="section-title">Recent transactions</div>
+      <div class="table-filter-bar">
+        <input type="text" class="table-filter-input" id="recent-txns-search" placeholder="🔍 Filter..." oninput="onTableFilterInput('recent-txns', this.value)">
+        <span class="table-filter-count" id="recent-txns-filter-count"></span>
+      </div>
       <div class="table-wrap" id="recent-txns"></div>
     </div>
 
@@ -398,6 +413,10 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
           <button class="btn btn-primary" onclick="openTxnModal()">+ Add transaction</button>
         </div>
       </div>
+      <div class="table-filter-bar">
+        <input type="text" class="table-filter-input" id="all-txns-table-search" placeholder="🔍 Filter by asset, type, date..." oninput="onTableFilterInput('all-txns-table', this.value)">
+        <span class="table-filter-count" id="all-txns-table-filter-count"></span>
+      </div>
       <div class="table-wrap" id="all-txns-table"></div>
     </div>
 
@@ -410,6 +429,10 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
         </div>
         <button class="btn btn-primary" onclick="openAssetModal()">+ Add asset</button>
       </div>
+      <div class="table-filter-bar">
+        <input type="text" class="table-filter-input" id="assets-table-search" placeholder="🔍 Filter by name, type, account..." oninput="onTableFilterInput('assets-table', this.value)">
+        <span class="table-filter-count" id="assets-table-filter-count"></span>
+      </div>
       <div class="table-wrap" id="assets-table"></div>
     </div>
 
@@ -421,6 +444,10 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
           <div class="page-sub">Track a family's portfolios separately — Self, Spouse, Child, Parents — while still seeing a consolidated view</div>
         </div>
         <button class="btn btn-primary" onclick="openAccountModal()">+ Add account</button>
+      </div>
+      <div class="table-filter-bar">
+        <input type="text" class="table-filter-input" id="accounts-table-search" placeholder="🔍 Filter accounts..." oninput="onTableFilterInput('accounts-table', this.value)">
+        <span class="table-filter-count" id="accounts-table-filter-count"></span>
       </div>
       <div class="table-wrap" id="accounts-table"></div>
     </div>
@@ -461,10 +488,18 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
 
       <div class="card" style="margin-top:16px;">
         <div class="card-title">Income by asset</div>
+        <div class="table-filter-bar">
+          <input type="text" class="table-filter-input" id="income-by-asset-table-search" placeholder="🔍 Filter..." oninput="onTableFilterInput('income-by-asset-table', this.value)">
+          <span class="table-filter-count" id="income-by-asset-table-filter-count"></span>
+        </div>
         <div class="table-wrap" id="income-by-asset-table"></div>
       </div>
 
       <div class="section-title">All income transactions</div>
+      <div class="table-filter-bar">
+        <input type="text" class="table-filter-input" id="income-table-search" placeholder="🔍 Filter by asset, type..." oninput="onTableFilterInput('income-table', this.value)">
+        <span class="table-filter-count" id="income-table-filter-count"></span>
+      </div>
       <div class="table-wrap" id="income-table"></div>
     </div>
 
@@ -487,14 +522,28 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
       <div class="grid grid-4" id="fy-summary-stats"></div>
 
       <div class="section-title">Asset-wise movement</div>
+      <div class="table-filter-bar">
+        <input type="text" class="table-filter-input" id="fy-asset-table-search" placeholder="🔍 Filter..." oninput="onTableFilterInput('fy-asset-table', this.value)">
+        <span class="table-filter-count" id="fy-asset-table-filter-count"></span>
+      </div>
       <div class="table-wrap" id="fy-asset-table"></div>
 
       <div class="section-title">Realised capital gains (indicative, FIFO)</div>
+      <div class="table-filter-bar">
+        <input type="text" class="table-filter-input" id="fy-capgains-table-search" placeholder="🔍 Filter..." oninput="onTableFilterInput('fy-capgains-table', this.value)">
+        <span class="table-filter-count" id="fy-capgains-table-filter-count"></span>
+      </div>
       <div class="table-wrap" id="fy-capgains-table"></div>
 
       <div class="section-title">Interest &amp; dividend income this year</div>
       <div class="two-col">
-        <div class="table-wrap" id="fy-income-table"></div>
+        <div>
+          <div class="table-filter-bar">
+            <input type="text" class="table-filter-input" id="fy-income-table-search" placeholder="🔍 Filter..." oninput="onTableFilterInput('fy-income-table', this.value)">
+            <span class="table-filter-count" id="fy-income-table-filter-count"></span>
+          </div>
+          <div class="table-wrap" id="fy-income-table"></div>
+        </div>
         <div class="card">
           <div class="card-title">Interest vs Dividend split</div>
           <div class="chart-box-sm"><canvas id="chart-fy-income-split"></canvas></div>
@@ -502,6 +551,10 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
       </div>
 
       <div class="section-title">All transactions this year</div>
+      <div class="table-filter-bar">
+        <input type="text" class="table-filter-input" id="fy-txn-table-search" placeholder="🔍 Filter by asset, type, date..." oninput="onTableFilterInput('fy-txn-table', this.value)">
+        <span class="table-filter-count" id="fy-txn-table-filter-count"></span>
+      </div>
       <div class="table-wrap" id="fy-txn-table"></div>
     </div>
 
@@ -519,6 +572,10 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
       <div class="two-col">
         <div class="card">
           <div class="card-title">Update prices individually</div>
+          <div class="table-filter-bar">
+            <input type="text" class="table-filter-input" id="nav-update-table-search" placeholder="🔍 Filter..." oninput="onTableFilterInput('nav-update-table', this.value)">
+            <span class="table-filter-count" id="nav-update-table-filter-count"></span>
+          </div>
           <div class="table-wrap" id="nav-update-table"></div>
         </div>
         <div class="card">
@@ -606,7 +663,7 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
             <button class="btn" id="btn-gdrive-restore" onclick="openGoogleDriveRestoreModal()" disabled>⬇ Restore…</button>
             <button class="btn btn-ghost" id="btn-gdrive-signout" onclick="signOutGoogleDrive()" style="display:none;">Sign out</button>
           </div>
-          <div class="field-hint" style="margin-top:10px;">Uses the restricted <code>drive.file</code> scope — FinPlan can only see backup files it creates itself, never the rest of your Drive.</div>
+          <div class="field-hint" style="margin-top:10px;">Uses the restricted <code>drive.file</code> scope — FinPlan can only see backup files it creates itself, never the rest of your Drive. Once connected, FinPlan tries to silently reconnect each time you reopen the app (as long as you're still signed into Google in this browser) — click "Sign out" if you want it to stop.</div>
         </div>
       </div>
 
@@ -953,6 +1010,7 @@ function ensureSettings(){
   if (state.settings.fxLastUpdated === undefined) state.settings.fxLastUpdated = null;
   if (state.settings.autoSaveLocalStorage === undefined) state.settings.autoSaveLocalStorage = true;
   if (state.settings.gdriveClientId === undefined) state.settings.gdriveClientId = '';
+  if (state.settings.gdriveWasConnected === undefined) state.settings.gdriveWasConnected = false;
 }
 function ensureAutoBackupSettings(){
   ensureSettings();
@@ -1049,7 +1107,7 @@ function assetTypeLabel(asset){
 }
 
 const MF_TXN_TYPES = [
-  ['buy','Purchase'], ['sip','SIP'], ['redeem','Redemption'],
+  ['buy','Buy'], ['purchase','Purchase'], ['lumpsum','Lumpsum'], ['sip','SIP'], ['redeem','Redemption'], ['sell','Sell'],
   ['switch_in','Switch In'], ['switch_out','Switch Out'],
   ['dividend_payout','Dividend (Payout)'], ['dividend_reinvest','Dividend (Reinvest)']
 ];
@@ -1190,7 +1248,7 @@ function computeElssLockIn(asset){
     let u = t.units;
     if ((u===null||u===undefined||u==='') && navp>0 && t.amount) u = t.amount/navp;
     u = Number(u)||0;
-    if (['buy','sip','switch_in'].includes(t.type)){
+    if (['buy','purchase','lumpsum','sip','switch_in'].includes(t.type)){
       lots.push({ date:t.date, units:u, unlockDate: addMonths(t.date, ELSS_LOCKIN_MONTHS) });
     } else if (['redeem','switch_out','sell'].includes(t.type)){
       let remaining = u;
@@ -1346,7 +1404,7 @@ function computeHoldings(assetsOverride, asOfDate){
       u = Number(u)||0;
 
       switch(t.type){
-        case 'buy': case 'sip': case 'switch_in':
+        case 'buy': case 'purchase': case 'lumpsum': case 'sip': case 'switch_in':
           units += u; netInvested += t.amount; cashflows.push({date:t.date, amount:-t.amount}); break;
         case 'redeem': case 'switch_out':
           units -= u; netInvested -= t.amount; cashflows.push({date:t.date, amount:t.amount}); break;
@@ -1392,6 +1450,9 @@ function computePortfolioXIRR(holdings){
 let allocationChart = null;
 
 function renderDashboard(){
+  const sampleBtn = document.getElementById('btn-sample-data');
+  if (sampleBtn) sampleBtn.style.display = state.transactions.length > 0 ? 'none' : 'inline-flex';
+
   const holdings = computeHoldings();
   const totalInvested = holdings.reduce((s,h)=>s+h.invested,0);
   const totalCurrent = holdings.reduce((s,h)=>s+h.currentValue,0);
@@ -1458,10 +1519,54 @@ function renderDashboard(){
   const filteredAssetIds = new Set(getFilteredAssets().map(a=>a.id));
   const recent = [...state.transactions].filter(t=>filteredAssetIds.has(t.assetId)).sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,8);
   document.getElementById('recent-txns').innerHTML = renderTxnTable(recent, false);
+
+  applyStoredFilter('holdings-table');
+  applyStoredFilter('recent-txns');
 }
 
 function emptyState(title, sub){
   return `<div class="empty-state"><div class="big-icon">◌</div><div style="font-weight:700; color:var(--text); margin-bottom:4px;">${title}</div><div>${sub}</div></div>`;
+}
+
+/* ==========================================================================
+   GENERIC TABLE FILTER — a small search box above any table filters its rows
+   by plain text match. Since tables are fully re-rendered from data on every
+   change, the current query per table is remembered here and re-applied
+   after each render (via applyStoredFilter), so the filter doesn't reset
+   itself as soon as something else changes.
+   ========================================================================== */
+let tableFilterQueries = {};
+function onTableFilterInput(tableWrapId, value){
+  tableFilterQueries[tableWrapId] = value;
+  filterTableRows(tableWrapId, value);
+}
+function filterTableRows(tableWrapId, query){
+  const wrap = document.getElementById(tableWrapId);
+  if (!wrap) return;
+  const q = (query||'').trim().toLowerCase();
+  const rows = wrap.querySelectorAll('tbody tr');
+  let visibleCount = 0;
+  rows.forEach(row=>{
+    const match = !q || row.innerText.toLowerCase().includes(q);
+    row.style.display = match ? '' : 'none';
+    if (match) visibleCount++;
+  });
+  const countEl = document.getElementById(tableWrapId+'-filter-count');
+  if (countEl){
+    countEl.textContent = q ? `${visibleCount} of ${rows.length} shown` : '';
+  }
+}
+// Call at the end of any render function right after a filterable table's innerHTML is set,
+// so an active search query survives the table being redrawn.
+function applyStoredFilter(tableWrapId){
+  const q = tableFilterQueries[tableWrapId];
+  if (q) filterTableRows(tableWrapId, q);
+}
+function clearTableFilter(tableWrapId){
+  tableFilterQueries[tableWrapId] = '';
+  const input = document.getElementById(tableWrapId+'-search');
+  if (input) input.value = '';
+  filterTableRows(tableWrapId, '');
 }
 
 /* ==========================================================================
@@ -1513,6 +1618,7 @@ function renderTransactionsPage(){
   const filteredAssetIds = new Set(getFilteredAssets().map(a=>a.id));
   const txns = [...state.transactions].filter(t=>filteredAssetIds.has(t.assetId)).sort((a,b)=>new Date(b.date)-new Date(a.date));
   document.getElementById('all-txns-table').innerHTML = renderTxnTable(txns, true);
+  applyStoredFilter('all-txns-table');
 }
 
 function populateAssetSelect(sel, includeEmpty=true){
@@ -1697,6 +1803,7 @@ function renderAccountsPage(){
     </tr>`;
   }).join('');
   el.innerHTML = `<table><thead><tr><th>Account</th><th>Assets</th><th>Goals</th><th>Current Value</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+  applyStoredFilter('accounts-table');
 }
 
 function openAccountModal(existing){
@@ -1771,6 +1878,7 @@ function renderAssetsPage(){
       </tr>`;
     }).join('')}
   </tbody></table>`;
+  applyStoredFilter('assets-table');
 }
 
 function onAssetTypeChange(){
@@ -2021,13 +2129,15 @@ function renderIncomePage(){
       </tr>`).join('')}
     </tbody></table>`;
   }
+  applyStoredFilter('income-by-asset-table');
+  applyStoredFilter('income-table');
 }
 
 /* ==========================================================================
    FINANCIAL YEAR REPORT (India FY: 1 Apr – 31 Mar)
    ========================================================================== */
 const INCOME_TXN_TYPES = ['interest_credit','dividend_payout','dividend'];
-const INVEST_TXN_TYPES = ['buy','sip','switch_in','deposit','installment'];
+const INVEST_TXN_TYPES = ['buy','purchase','lumpsum','sip','switch_in','deposit','installment'];
 const WITHDRAW_TXN_TYPES = ['redeem','switch_out','sell','maturity','withdrawal','prize_money'];
 
 function currentFyStartYear(){
@@ -2259,6 +2369,11 @@ function renderFyReportPage(){
   }
 
   document.getElementById('fy-txn-table').innerHTML = renderTxnTable(report.txnLog, false);
+
+  applyStoredFilter('fy-asset-table');
+  applyStoredFilter('fy-capgains-table');
+  applyStoredFilter('fy-income-table');
+  applyStoredFilter('fy-txn-table');
 }
 
 function downloadFyReportCSV(){
@@ -2375,6 +2490,7 @@ function renderNavUpdatePage(){
       <td><button class="btn btn-sm btn-primary" onclick="updateSingleNav('${a.id}')">Update</button></td>
     </tr>`; }).join('')}
   </tbody></table>`;
+  applyStoredFilter('nav-update-table');
 }
 function updateSingleNav(assetId){
   const v = parseFloat(document.getElementById('navinput-'+assetId).value);
@@ -2958,6 +3074,33 @@ function updateGDriveUI(connected){
   if (connectBtn) connectBtn.textContent = connected ? 'Reconnect' : 'Connect Google Drive';
 }
 
+// Silently attempts to reconnect Google Drive on app startup if the person connected before
+// and hasn't explicitly signed out. Relies on Google's own remembered consent + an active
+// Google session in this browser — if either is missing, this just fails quietly and the
+// person sees "Not connected" with a normal Connect button, no error shown.
+function attemptGdriveAutoReconnect(retriesLeft){
+  ensureSettings();
+  if (!state.settings.gdriveWasConnected || !state.settings.gdriveClientId) return;
+  if (!gdriveReady()){
+    if (retriesLeft > 0) setTimeout(()=>attemptGdriveAutoReconnect(retriesLeft-1), 300);
+    return;
+  }
+  try{
+    gdriveTokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: state.settings.gdriveClientId,
+      scope: 'https://www.googleapis.com/auth/drive.file',
+      callback: (resp) => {
+        if (resp.error){ updateGDriveUI(false); renderAutoBackupUI(); return; }
+        gdriveAccessToken = resp.access_token;
+        gdriveTokenExpiry = Date.now() + (resp.expires_in*1000);
+        updateGDriveUI(true);
+        renderAutoBackupUI();
+      }
+    });
+    gdriveTokenClient.requestAccessToken({ prompt: '' });
+  }catch(e){ /* leave disconnected — person can click Connect manually */ }
+}
+
 function connectGoogleDrive(){
   const clientId = document.getElementById('gdrive-client-id').value.trim();
   if (!clientId){ showToast('Paste your Google OAuth Client ID first (see setup steps above)'); return; }
@@ -2971,6 +3114,9 @@ function connectGoogleDrive(){
         if (resp.error){ showToast('Google sign-in failed: '+resp.error); return; }
         gdriveAccessToken = resp.access_token;
         gdriveTokenExpiry = Date.now() + (resp.expires_in*1000);
+        ensureSettings();
+        state.settings.gdriveWasConnected = true;
+        scheduleLocalStorageSave();
         updateGDriveUI(true);
         showToast('Connected to Google Drive');
       }
@@ -2987,6 +3133,9 @@ function signOutGoogleDrive(){
     google.accounts.oauth2.revoke(gdriveAccessToken, ()=>{});
   }
   gdriveAccessToken = null; gdriveTokenExpiry = 0;
+  ensureSettings();
+  state.settings.gdriveWasConnected = false;
+  scheduleLocalStorageSave();
   ensureAutoBackupSettings();
   if (state.settings.autoBackup.driveEnabled){
     state.settings.autoBackup.driveEnabled = false;
@@ -2998,7 +3147,10 @@ function signOutGoogleDrive(){
 }
 
 async function backupToGoogleDrive(){
-  if (!gdriveTokenFresh()){ showToast('Please connect Google Drive first'); return; }
+  if (!gdriveTokenFresh()){
+    const refreshed = await trySilentDriveRefresh();
+    if (!refreshed){ showToast('Please connect Google Drive first'); return; }
+  }
   const filename = `finplan_backup_${todayISO()}_${Date.now()}.json`;
   const content = JSON.stringify(state, null, 2);
   const metadata = { name: filename, mimeType: 'application/json' };
@@ -3055,7 +3207,10 @@ async function driveUploadOrUpdateFile(name, content){
 }
 
 async function openGoogleDriveRestoreModal(){
-  if (!gdriveTokenFresh()){ showToast('Please connect Google Drive first'); return; }
+  if (!gdriveTokenFresh()){
+    const refreshed = await trySilentDriveRefresh();
+    if (!refreshed){ showToast('Please connect Google Drive first'); return; }
+  }
   openModalById('modal-gdrive-restore');
   const listEl = document.getElementById('gdrive-restore-list');
   listEl.innerHTML = 'Loading…';
@@ -3427,6 +3582,7 @@ function renderAll(){
 const restoredFromLocalStorage = loadStateFromLocalStorage();
 renderAll();
 if (restoredFromLocalStorage) showToast('Restored your data from this browser');
+attemptGdriveAutoReconnect(15);
 </script>
 </body>
 </html>
