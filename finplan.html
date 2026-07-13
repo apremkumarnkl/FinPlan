@@ -181,6 +181,10 @@ tbody tr:hover{background:rgba(255,255,255,.02);}
 .badge-fd{background:rgba(45,212,191,.15); color:var(--debt);}
 .badge-bond{background:rgba(192,142,145,.16); color:var(--bond);}
 .badge-us-stock{background:rgba(249,115,22,.15); color:#f97316;}
+.badge-ppf{background:rgba(45,212,191,.15); color:var(--debt);}
+.badge-ssy{background:rgba(236,72,153,.15); color:#ec4899;}
+.badge-nps{background:rgba(167,139,250,.15); color:var(--hybrid);}
+.badge-chit{background:rgba(217,119,6,.16); color:#d97706;}
 .fx-hint{font-size:11.5px; color:var(--text-faint);}
 .native-amt{font-size:11px; color:var(--text-faint); display:block; margin-top:2px;}
 .cell-value{display:inline-flex; flex-direction:column; align-items:flex-end;}
@@ -541,12 +545,21 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
         <div class="card">
           <div class="card-title">Currency &amp; exchange rate</div>
           <p style="color:var(--text-dim); font-size:13px;">Used to convert US Stock holdings (and anything else priced in USD) into your chosen display currency across the whole app.</p>
-          <div class="field" style="margin-top:8px;">
+          <div class="fx-hint" id="fx-last-updated" style="margin-bottom:8px;"></div>
+          <div class="field">
             <label>USD → INR rate</label>
             <input type="number" id="settings-fx-rate" step="0.01" placeholder="e.g. 83.50">
           </div>
-          <button class="btn btn-primary" style="margin-top:4px;" onclick="saveFxRate()">Save rate</button>
-          <div class="field-hint" style="margin-top:8px;">There's no live FX feed here — update this manually from time to time (e.g. from a search for "USD to INR").</div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
+            <button class="btn btn-primary" onclick="saveFxRate()">Save rate</button>
+            <button class="btn" id="btn-fetch-fx" onclick="fetchLatestFxRate()">🔄 Fetch latest rate</button>
+          </div>
+          <label style="display:block; font-size:12px; color:var(--text-dim); margin:12px 0 6px; font-weight:600;">Keep this updated automatically</label>
+          <div class="pill-toggle" id="fx-autofetch-toggle">
+            <button data-val="off" onclick="setAutoFetchFx(false)">Manual</button>
+            <button data-val="on" onclick="setAutoFetchFx(true)">Auto-update</button>
+          </div>
+          <div class="field-hint" style="margin-top:8px;">Auto-update fetches the live rate from free, no-key public exchange-rate APIs (Frankfurter, with a fallback provider) once when you turn it on, and every few hours after that while this tab stays open. This is the only thing in FinPlan that calls an external service automatically — everything else stays local unless you connect Google Drive yourself.</div>
         </div>
         <div class="card">
           <div class="card-title">Export backup</div>
@@ -721,6 +734,18 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
           <option value="us_stock">US Stock</option>
           <option value="bond">Corporate Bond</option>
           <option value="fd">Fixed Deposit</option>
+          <option value="rd">Recurring Deposit (RD)</option>
+          <option value="ppf">PPF (Public Provident Fund)</option>
+          <option value="ssy">Sukanya Samriddhi Yojana (SSY)</option>
+          <option value="nps">NPS (National Pension System)</option>
+          <option value="chit">Chit Fund / Kitty</option>
+        </select>
+      </div>
+      <div class="field" id="asset-nps-tier-field" style="display:none;">
+        <label>NPS Tier</label>
+        <select id="asset-nps-tier">
+          <option value="tier1">Tier 1 (retirement, locked till 60)</option>
+          <option value="tier2">Tier 2 (voluntary, withdraw anytime)</option>
         </select>
       </div>
       <div class="field" id="asset-currency-field">
@@ -902,6 +927,8 @@ function ensureSettings(){
   if (!state.settings) state.settings = { usdInrRate: 83.5, displayCurrency: 'INR' };
   if (!state.settings.usdInrRate) state.settings.usdInrRate = 83.5;
   if (!state.settings.displayCurrency) state.settings.displayCurrency = 'INR';
+  if (state.settings.autoFetchFx === undefined) state.settings.autoFetchFx = false;
+  if (state.settings.fxLastUpdated === undefined) state.settings.fxLastUpdated = null;
 }
 function ensureAutoBackupSettings(){
   ensureSettings();
@@ -954,22 +981,41 @@ function accountTag(accountId){
 const ASSET_TYPE_LABELS = {
   equity_mf: 'Equity MF', debt_mf: 'Debt MF', hybrid_mf: 'Hybrid MF',
   gold_mf: 'Gold MF/ETF', gold: 'Gold (Physical/Digital)',
-  stock: 'Stock', us_stock: 'US Stock', bond: 'Corporate Bond', fd: 'Fixed Deposit'
+  stock: 'Stock', us_stock: 'US Stock', bond: 'Corporate Bond', fd: 'Fixed Deposit',
+  ppf: 'PPF (Public Provident Fund)', ssy: 'Sukanya Samriddhi Yojana (SSY)',
+  rd: 'Recurring Deposit (RD)', nps: 'NPS (National Pension System)',
+  chit: 'Chit Fund / Kitty'
 };
 const ASSET_TYPE_BADGE = {
   equity_mf: 'badge-equity', debt_mf: 'badge-debt', hybrid_mf: 'badge-hybrid',
   gold_mf: 'badge-gold', gold: 'badge-gold',
-  stock: 'badge-stock', us_stock: 'badge-us-stock', bond: 'badge-bond', fd: 'badge-fd'
+  stock: 'badge-stock', us_stock: 'badge-us-stock', bond: 'badge-bond', fd: 'badge-fd',
+  ppf: 'badge-ppf', ssy: 'badge-ssy', rd: 'badge-fd', nps: 'badge-nps', chit: 'badge-chit'
 };
 // which broad allocation bucket each asset type maps to
 const ALLOC_BUCKET = {
   equity_mf: 'Equity', stock: 'Equity', us_stock: 'Equity',
-  debt_mf: 'Debt', fd: 'Debt',
+  debt_mf: 'Debt', fd: 'Debt', ppf: 'Debt', ssy: 'Debt', rd: 'Debt',
   bond: 'Bonds',
-  hybrid_mf: 'Hybrid', gold_mf: 'Gold', gold: 'Gold'
+  hybrid_mf: 'Hybrid', gold_mf: 'Gold', gold: 'Gold',
+  nps: 'Hybrid', chit: 'Chit Funds'
 };
 // default pricing currency by asset type (user can still override per-asset)
 const DEFAULT_ASSET_CURRENCY = { us_stock: 'USD' };
+// asset types that behave like a fixed/compounding deposit (no NAV, no units — just
+// principal tranches that compound at a stated rate) rather than being unit-priced
+const COMPOUNDING_DEPOSIT_TYPES = ['fd', 'ppf', 'ssy', 'rd'];
+// how many times a year interest compounds, by type (1=annual, 4=quarterly)
+const DEFAULT_COMPOUND_FREQ = { fd: 1, ppf: 1, ssy: 1, rd: 4 };
+// asset types with no units/NAV/price at all (compounding deposits, plus chit funds
+// which have no stated interest rate — value is tracked purely from transactions)
+const UNIT_LESS_TYPES = [...COMPOUNDING_DEPOSIT_TYPES, 'chit'];
+// NPS is unit/NAV-based but comes in two account types with different lock-in rules
+const NPS_TIER_LABELS = { tier1: 'NPS Tier 1', tier2: 'NPS Tier 2' };
+function assetTypeLabel(asset){
+  if (asset.type==='nps') return NPS_TIER_LABELS[asset.npsTier] || NPS_TIER_LABELS.tier1;
+  return ASSET_TYPE_LABELS[asset.type] || asset.type;
+}
 
 const MF_TXN_TYPES = [
   ['buy','Purchase'], ['sip','SIP'], ['redeem','Redemption'],
@@ -980,6 +1026,10 @@ const STOCK_TXN_TYPES = [['buy','Buy'], ['sell','Sell'], ['dividend','Dividend']
 const GOLD_TXN_TYPES = [['buy','Purchase'], ['sell','Sell']];
 const BOND_TXN_TYPES = [['buy','Purchase'], ['interest_credit','Interest (Coupon)'], ['sell','Sell'], ['maturity','Maturity']];
 const FD_TXN_TYPES = [['deposit','Deposit Opened'], ['interest_credit','Interest Credit'], ['maturity','Maturity']];
+const PPF_SSY_TXN_TYPES = [['deposit','Deposit / Contribution'], ['interest_credit','Interest Credit (usually automatic)'], ['withdrawal','Partial Withdrawal'], ['maturity','Maturity / Closure']];
+const RD_TXN_TYPES = [['deposit','Monthly Deposit'], ['interest_credit','Interest Credit'], ['maturity','Maturity']];
+const NPS_TXN_TYPES = [['buy','Contribution'], ['sip','Monthly Contribution'], ['redeem','Withdrawal'], ['maturity','Maturity / Retirement Withdrawal']];
+const CHIT_TXN_TYPES = [['installment','Monthly Installment'], ['dividend','Dividend / Discount Received'], ['prize_money','Prize Money Received'], ['maturity','Chit Completed / Closed']];
 
 function uid(prefix){ return prefix + '_' + Math.random().toString(36).slice(2,10) + Date.now().toString(36).slice(-4); }
 function todayISO(){ return new Date().toISOString().slice(0,10); }
@@ -1126,32 +1176,64 @@ function computeHoldings(assetsOverride, asOfDate){
 
     const cashflows = [];
 
-    if (asset.type === 'fd'){
-      // FD: principal grows via compound interest until maturity/cutoff
-      let principal = 0, openDate = null, rate = 0, matured=false, maturityValue=null, maturityDate=null;
+    if (COMPOUNDING_DEPOSIT_TYPES.includes(asset.type)){
+      // FD / RD / PPF / SSY: each deposit is its own tranche that compounds independently
+      // from its own date (important for PPF/SSY/RD which get many deposits over the years —
+      // a single FD usually has just one, but the math is the same either way).
+      let tranches = [], matured = false, maturityDate = null, withdrawnTotal = 0, lastRate = 0;
       for(const t of txns){
         if (t.type==='deposit'){
-          principal += t.amount; openDate = t.date; rate = t.rate||0;
-          if (t.tenure) { maturityDate = addMonths(t.date, t.tenure); }
+          const rate = t.rate || 0;
+          tranches.push({date:t.date, amount:t.amount, rate});
+          lastRate = rate;
+          if (t.tenure && !maturityDate) maturityDate = addMonths(t.date, t.tenure);
           cashflows.push({date:t.date, amount:-t.amount});
         } else if (t.type==='interest_credit'){
           cashflows.push({date:t.date, amount: t.amount});
+        } else if (t.type==='withdrawal'){
+          withdrawnTotal += t.amount;
+          cashflows.push({date:t.date, amount:t.amount});
         } else if (t.type==='maturity'){
-          matured = true; maturityValue = t.amount; maturityDate = t.date;
+          matured = true; maturityDate = t.date;
           cashflows.push({date:t.date, amount:t.amount});
         }
       }
-      let currentValue;
-      if (matured){
-        currentValue = 0;
-      } else if (openDate){
-        const yrs = yearsBetween(openDate, cutoff);
-        currentValue = principal * Math.pow(1+(rate/100), Math.max(yrs,0));
-      } else currentValue = 0;
-      const invested = matured ? 0 : principal;
+      const freq = DEFAULT_COMPOUND_FREQ[asset.type] || 1;
+      let currentValue = 0, invested = 0;
+      if (!matured){
+        for(const tr of tranches){
+          if (tr.date > cutoff) continue;
+          const yrs = yearsBetween(tr.date, cutoff);
+          currentValue += tr.amount * Math.pow(1 + (tr.rate/100)/freq, Math.max(yrs,0)*freq);
+          invested += tr.amount;
+        }
+        currentValue = Math.max(currentValue - withdrawnTotal, 0);
+        invested = Math.max(invested - withdrawnTotal, 0);
+      }
       const units = matured ? 0 : 1;
       const cfs = matured ? cashflows : [...cashflows, {date: cutoff, amount: currentValue}];
-      holdings.push(finalize(asset, units, invested, currentValue, cfs, matured, { rate, maturityDate }));
+      holdings.push(finalize(asset, units, invested, currentValue, cfs, matured, { rate: lastRate, maturityDate }));
+      continue;
+    }
+
+    if (asset.type === 'chit'){
+      // Chit fund / kitty: no stated interest rate, so we don't project growth — "current value"
+      // is simply the installments paid so far, minus any prize money already received (since
+      // that portion has effectively already been paid back to you early). Dividends/discounts
+      // are tracked as income, not added to this value.
+      let paidIn = 0, prizeReceived = 0, matured = false;
+      for(const t of txns){
+        if (t.date > cutoff) continue;
+        if (t.type==='installment'){ paidIn += t.amount; cashflows.push({date:t.date, amount:-t.amount}); }
+        else if (t.type==='dividend'){ cashflows.push({date:t.date, amount:t.amount}); }
+        else if (t.type==='prize_money'){ prizeReceived += t.amount; cashflows.push({date:t.date, amount:t.amount}); }
+        else if (t.type==='maturity'){ matured = true; cashflows.push({date:t.date, amount:t.amount}); }
+      }
+      const currentValue = matured ? 0 : Math.max(paidIn - prizeReceived, 0);
+      const invested = matured ? 0 : Math.max(paidIn - prizeReceived, 0);
+      const units = matured ? 0 : 1;
+      const cfs = matured ? cashflows : [...cashflows, {date: cutoff, amount: currentValue}];
+      holdings.push(finalize(asset, units, invested, currentValue, cfs, matured));
       continue;
     }
 
@@ -1182,8 +1264,8 @@ function computeHoldings(assetsOverride, asOfDate){
       continue;
     }
 
-    // MF / Stock / US Stock / Gold: unit-based
-    let units = 0, netInvested = 0;
+    // MF / Stock / US Stock / Gold / NPS: unit-based
+    let units = 0, netInvested = 0, matured = false;
     for(const t of txns){
       const navp = t.navPrice || asset.nav || 0;
       let u = t.units;
@@ -1201,12 +1283,14 @@ function computeHoldings(assetsOverride, asOfDate){
           cashflows.push({date:t.date, amount:t.amount}); break; // cash out of fund, doesn't change units
         case 'dividend_reinvest':
           units += u; cashflows.push({date:t.date, amount:0}); break; // neutral, reinvested
+        case 'maturity':
+          matured = true; units = 0; netInvested = 0; cashflows.push({date:t.date, amount:t.amount}); break; // e.g. NPS retirement withdrawal
         default: break;
       }
     }
-    const currentValue = units * priceAsOf(asset, cutoff);
-    const cfs = [...cashflows, {date: cutoff, amount: currentValue}];
-    holdings.push(finalize(asset, units, netInvested, currentValue, cfs, false));
+    const currentValue = matured ? 0 : units * priceAsOf(asset, cutoff);
+    const cfs = matured ? cashflows : [...cashflows, {date: cutoff, amount: currentValue}];
+    holdings.push(finalize(asset, units, netInvested, currentValue, cfs, matured));
   }
   return holdings;
 }
@@ -1265,8 +1349,8 @@ function renderDashboard(){
         const showNative = h.nativeCurrency !== getDisplayCurrency();
         return `<tr>
           <td data-label="Asset">${h.asset.name}</td>
-          <td data-label="Type"><span class="badge ${ASSET_TYPE_BADGE[h.asset.type]}">${ASSET_TYPE_LABELS[h.asset.type]}</span></td>
-          <td data-label="Units">${h.asset.type==='fd' ? '—' : fmtNum(h.units,3)}</td>
+          <td data-label="Type"><span class="badge ${ASSET_TYPE_BADGE[h.asset.type]}">${assetTypeLabel(h.asset)}</span></td>
+          <td data-label="Units">${UNIT_LESS_TYPES.includes(h.asset.type) ? '—' : fmtNum(h.units,3)}</td>
           <td data-label="Invested"><span class="cell-value">${fmtMoney(h.invested)}${showNative?`<span class="native-amt">${fmtMoney(h.nativeInvested, h.nativeCurrency)}</span>`:''}</span></td>
           <td data-label="Current Value"><span class="cell-value">${fmtMoney(h.currentValue)}${showNative?`<span class="native-amt">${fmtMoney(h.nativeCurrentValue, h.nativeCurrency)}</span>`:''}</span></td>
           <td data-label="Gain" class="${h.gain>=0?'pos':'neg'}">${h.gain>=0?'+':''}${fmtMoney(h.gain)}</td>
@@ -1283,7 +1367,7 @@ function renderDashboard(){
     buckets[b] = (buckets[b]||0) + Math.max(h.currentValue,0);
   }
   const labels = Object.keys(buckets);
-  const colorMap = {Equity:'#38bdf8', Debt:'#2dd4bf', Hybrid:'#a78bfa', Gold:'#fbbf24', Bonds:'#c08e91', Other:'#94a3b8'};
+  const colorMap = {Equity:'#38bdf8', Debt:'#2dd4bf', Hybrid:'#a78bfa', Gold:'#fbbf24', Bonds:'#c08e91', 'Chit Funds':'#d97706', Other:'#94a3b8'};
   const ctx = document.getElementById('chart-allocation').getContext('2d');
   if (allocationChart) allocationChart.destroy();
   if (labels.length===0){
@@ -1310,8 +1394,19 @@ function emptyState(title, sub){
 /* ==========================================================================
    TRANSACTIONS PAGE
    ========================================================================== */
+function getTxnTypeList(assetType){
+  if (assetType==='fd') return FD_TXN_TYPES;
+  if (assetType==='ppf' || assetType==='ssy') return PPF_SSY_TXN_TYPES;
+  if (assetType==='rd') return RD_TXN_TYPES;
+  if (assetType==='nps') return NPS_TXN_TYPES;
+  if (assetType==='chit') return CHIT_TXN_TYPES;
+  if (assetType==='bond') return BOND_TXN_TYPES;
+  if (assetType==='gold') return GOLD_TXN_TYPES;
+  if (assetType==='stock' || assetType==='us_stock') return STOCK_TXN_TYPES;
+  return MF_TXN_TYPES;
+}
 function txnTypeLabel(assetType, type){
-  const list = assetType==='fd' ? FD_TXN_TYPES : (assetType==='bond' ? BOND_TXN_TYPES : (assetType==='gold' ? GOLD_TXN_TYPES : ((assetType==='stock'||assetType==='us_stock') ? STOCK_TXN_TYPES : MF_TXN_TYPES)));
+  const list = getTxnTypeList(assetType);
   const f = list.find(x=>x[0]===type);
   return f? f[1] : type;
 }
@@ -1353,7 +1448,7 @@ function populateAssetSelect(sel, includeEmpty=true){
     list.map(a=>{
       const acc = getAccount(a.accountId);
       const accLabel = (currentAccountFilter==='all' && acc) ? ` — ${acc.name}` : '';
-      return `<option value="${a.id}">${a.name} (${ASSET_TYPE_LABELS[a.type]})${accLabel}</option>`;
+      return `<option value="${a.id}">${a.name} (${assetTypeLabel(a)})${accLabel}</option>`;
     }).join('');
 }
 
@@ -1384,16 +1479,17 @@ function onTxnAssetChange(presetType){
   const asset = getAsset(assetId);
   const typeSel = document.getElementById('txn-type');
   if (!asset){ typeSel.innerHTML=''; return; }
-  const list = asset.type==='fd' ? FD_TXN_TYPES : (asset.type==='bond' ? BOND_TXN_TYPES : (asset.type==='gold' ? GOLD_TXN_TYPES : ((asset.type==='stock'||asset.type==='us_stock') ? STOCK_TXN_TYPES : MF_TXN_TYPES)));
+  const list = getTxnTypeList(asset.type);
   typeSel.innerHTML = list.map(([v,l])=>`<option value="${v}">${l}</option>`).join('');
   if (presetType) typeSel.value = presetType;
 
-  const isFd = asset.type==='fd';
+  const isUnitless = UNIT_LESS_TYPES.includes(asset.type);
+  const showRateTenure = COMPOUNDING_DEPOSIT_TYPES.includes(asset.type);
   const sym = CURRENCY_SYMBOLS[asset.currency||'INR'] || '₹';
-  document.getElementById('txn-units-field').style.display = isFd ? 'none':'block';
-  document.getElementById('txn-navprice-field').style.display = isFd ? 'none':'block';
-  document.getElementById('txn-rate-field').style.display = isFd ? 'block':'none';
-  document.getElementById('txn-tenure-field').style.display = isFd ? 'block':'none';
+  document.getElementById('txn-units-field').style.display = isUnitless ? 'none':'block';
+  document.getElementById('txn-navprice-field').style.display = isUnitless ? 'none':'block';
+  document.getElementById('txn-rate-field').style.display = showRateTenure ? 'block':'none';
+  document.getElementById('txn-tenure-field').style.display = showRateTenure ? 'block':'none';
   document.getElementById('txn-units-label').textContent = asset.type==='gold' ? 'Grams' : 'Units';
   let navLabel;
   if (asset.type==='stock' || asset.type==='us_stock') navLabel = `Price per unit (${sym})`;
@@ -1575,7 +1671,7 @@ function deleteAccount(id){
 function renderAssetsPage(){
   const el = document.getElementById('assets-table');
   const assets = getFilteredAssets();
-  if (assets.length===0){ el.innerHTML = emptyState('No assets registered', 'Add mutual funds, stocks, bonds, gold, or FDs you want to track.'); return; }
+  if (assets.length===0){ el.innerHTML = emptyState('No assets registered', 'Add mutual funds, stocks, bonds, gold, FDs, RDs, PPF, SSY, NPS or chit funds you want to track.'); return; }
   const holdingsAll = computeHoldings(assets);
   el.innerHTML = `<table><thead><tr><th>Name</th><th>Account</th><th>Type</th><th>Current NAV/Price</th><th>Holding Value</th><th></th></tr></thead><tbody>
     ${assets.map(a=>{
@@ -1585,8 +1681,8 @@ function renderAssetsPage(){
       return `<tr>
         <td>${a.name}</td>
         <td>${accountTag(a.accountId)}</td>
-        <td><span class="badge ${ASSET_TYPE_BADGE[a.type]}">${ASSET_TYPE_LABELS[a.type]}</span></td>
-        <td>${a.type==='fd'?'—':(CURRENCY_SYMBOLS[cur]||'₹')+fmtNum(a.nav,4)}</td>
+        <td><span class="badge ${ASSET_TYPE_BADGE[a.type]}">${assetTypeLabel(a)}</span></td>
+        <td>${UNIT_LESS_TYPES.includes(a.type)?'—':(CURRENCY_SYMBOLS[cur]||'₹')+fmtNum(a.nav,4)}</td>
         <td>${h?fmtMoney(h.currentValue):'—'}${showNative?`<span class="native-amt">${fmtMoney(h.nativeCurrentValue, h.nativeCurrency)}</span>`:''}</td>
         <td>
           <button class="icon-btn" onclick="editAsset('${a.id}')">✎</button>
@@ -1599,7 +1695,8 @@ function renderAssetsPage(){
 
 function onAssetTypeChange(){
   const type = document.getElementById('asset-type').value;
-  document.getElementById('asset-nav-field').style.display = type==='fd' ? 'none' : 'block';
+  const isUnitless = UNIT_LESS_TYPES.includes(type);
+  document.getElementById('asset-nav-field').style.display = isUnitless ? 'none' : 'block';
   let navLabel = 'Current NAV';
   if (type==='stock' || type==='us_stock') navLabel = 'Current price per share';
   else if (type==='bond') navLabel = 'Current market price per bond';
@@ -1607,6 +1704,7 @@ function onAssetTypeChange(){
   document.getElementById('asset-nav-label').textContent = navLabel;
   document.getElementById('asset-facevalue-field').style.display = type==='bond' ? 'block' : 'none';
   document.getElementById('asset-coupon-field').style.display = type==='bond' ? 'block' : 'none';
+  document.getElementById('asset-nps-tier-field').style.display = type==='nps' ? 'block' : 'none';
 
   // default currency by type, only auto-set if the field hasn't been hand-edited for this open
   const curSel = document.getElementById('asset-currency');
@@ -1632,6 +1730,7 @@ function openAssetModal(existing){
   document.getElementById('asset-nav').value = existing? (existing.nav||'') : '';
   document.getElementById('asset-facevalue').value = existing && existing.faceValue ? existing.faceValue : '';
   document.getElementById('asset-coupon').value = existing && existing.couponRate ? existing.couponRate : '';
+  document.getElementById('asset-nps-tier').value = existing && existing.npsTier ? existing.npsTier : 'tier1';
   const curSel = document.getElementById('asset-currency');
   if (existing){
     curSel.value = existing.currency || 'INR';
@@ -1662,10 +1761,11 @@ function saveAsset(){
   const nav = parseFloat(document.getElementById('asset-nav').value) || 0;
   const faceValue = parseFloat(document.getElementById('asset-facevalue').value) || null;
   const couponRate = parseFloat(document.getElementById('asset-coupon').value) || null;
+  const npsTier = document.getElementById('asset-nps-tier').value || 'tier1';
   const accountId = document.getElementById('asset-account').value;
   const currency = document.getElementById('asset-currency').value || 'INR';
   if (!name){ showToast('Name is required'); return; }
-  const asset = { id: id||uid('asset'), name, type, nav, faceValue, couponRate, accountId, currency };
+  const asset = { id: id||uid('asset'), name, type, nav, faceValue, couponRate, npsTier, accountId, currency };
   const idx = state.assets.findIndex(a=>a.id===asset.id);
   if (idx>=0) state.assets[idx] = {...state.assets[idx], ...asset}; else state.assets.push(asset);
   closeModal('modal-asset');
@@ -1686,8 +1786,14 @@ function computeIncomeEvents(){
     let incomeType = null;
     if (t.type === 'dividend_payout') incomeType = 'Dividend';
     else if (t.type === 'dividend_reinvest') incomeType = 'Dividend (Reinvested)';
-    else if (t.type === 'dividend') incomeType = 'Dividend';
-    else if (t.type === 'interest_credit') incomeType = (asset.type==='bond') ? 'Interest (Coupon)' : 'Interest';
+    else if (t.type === 'dividend') incomeType = (asset.type==='chit') ? 'Dividend (Chit)' : 'Dividend';
+    else if (t.type === 'interest_credit'){
+      if (asset.type==='bond') incomeType = 'Interest (Coupon)';
+      else if (asset.type==='ppf') incomeType = 'Interest (PPF)';
+      else if (asset.type==='ssy') incomeType = 'Interest (SSY)';
+      else if (asset.type==='rd') incomeType = 'Interest (RD)';
+      else incomeType = 'Interest';
+    }
     if (!incomeType) continue;
     const amt = toDisplayCurrency(Number(t.amount)||0, asset.currency||'INR');
     if (amt === 0) continue;
@@ -1841,8 +1947,8 @@ function renderIncomePage(){
    FINANCIAL YEAR REPORT (India FY: 1 Apr – 31 Mar)
    ========================================================================== */
 const INCOME_TXN_TYPES = ['interest_credit','dividend_payout','dividend'];
-const INVEST_TXN_TYPES = ['buy','sip','switch_in','deposit'];
-const WITHDRAW_TXN_TYPES = ['redeem','switch_out','sell','maturity'];
+const INVEST_TXN_TYPES = ['buy','sip','switch_in','deposit','installment'];
+const WITHDRAW_TXN_TYPES = ['redeem','switch_out','sell','maturity','withdrawal','prize_money'];
 
 function currentFyStartYear(){
   const now = new Date();
@@ -1869,7 +1975,7 @@ function getAvailableFYs(){
 function computeRealizedGainsFIFO(assets, startDate, endDate){
   const results = [];
   for(const asset of assets){
-    if (asset.type==='fd') continue;
+    if (UNIT_LESS_TYPES.includes(asset.type)) continue;
     const cur = asset.currency || 'INR';
     const txns = state.transactions.filter(t=>t.assetId===asset.id).sort((a,b)=>new Date(a.date)-new Date(b.date));
     let lots = []; // {date, units, costPerUnit} — costPerUnit stored in display currency
@@ -2007,7 +2113,7 @@ function renderFyReportPage(){
     assetTblEl.innerHTML = `<table><thead><tr><th>Asset</th><th>Type</th><th>Opening</th><th>Invested</th><th>Withdrawn</th><th>Closing</th><th>Gain</th></tr></thead><tbody>
       ${report.rows.map(r=>`<tr>
         <td>${r.asset.name}</td>
-        <td><span class="badge ${ASSET_TYPE_BADGE[r.asset.type]}">${ASSET_TYPE_LABELS[r.asset.type]}</span></td>
+        <td><span class="badge ${ASSET_TYPE_BADGE[r.asset.type]}">${assetTypeLabel(r.asset)}</span></td>
         <td>${fmtMoney(r.openingVal)}</td>
         <td>${fmtMoney(r.invested)}</td>
         <td>${fmtMoney(r.withdrawn)}</td>
@@ -2081,7 +2187,7 @@ function downloadFyReportCSV(){
   let csv = `FinPlan Financial Year Report\n${r.label},${r.startDate} to ${r.effectiveEnd}\n\n`;
   csv += `SUMMARY\nOpening Value,${r.totalOpening.toFixed(2)}\nClosing Value,${r.totalClosing.toFixed(2)}\nInvested,${r.totalInvested.toFixed(2)}\nWithdrawn,${r.totalWithdrawn.toFixed(2)}\nIncome,${r.totalIncome.toFixed(2)}\nGain,${r.totalGain.toFixed(2)}\nPeriod XIRR %,${r.periodXirr!==null?r.periodXirr.toFixed(2):''}\n\n`;
   csv += `ASSET-WISE MOVEMENT\nAsset,Type,Opening,Invested,Withdrawn,Closing,Gain\n`;
-  r.rows.forEach(row=>{ csv += `"${row.asset.name}",${ASSET_TYPE_LABELS[row.asset.type]},${row.openingVal.toFixed(2)},${row.invested.toFixed(2)},${row.withdrawn.toFixed(2)},${row.closingVal.toFixed(2)},${row.gain.toFixed(2)}\n`; });
+  r.rows.forEach(row=>{ csv += `"${row.asset.name}",${assetTypeLabel(row.asset)},${row.openingVal.toFixed(2)},${row.invested.toFixed(2)},${row.withdrawn.toFixed(2)},${row.closingVal.toFixed(2)},${row.gain.toFixed(2)}\n`; });
   csv += `\nREALISED CAPITAL GAINS (indicative)\nDate,Asset,Type,Proceeds,Cost Basis,Short-term Gain,Long-term Gain,Total Gain\n`;
   r.capGains.forEach(c=>{ csv += `${c.date},"${c.assetName}",${c.txnType},${c.proceeds.toFixed(2)},${c.costBasis.toFixed(2)},${c.stGain.toFixed(2)},${c.ltGain.toFixed(2)},${c.gain.toFixed(2)}\n`; });
   csv += `\nINCOME\nDate,Asset,Income Type,Amount\n`;
@@ -2127,7 +2233,7 @@ function downloadFyReportPDF(){
   doc.autoTable({
     startY: y,
     head: [['Asset','Type','Opening','Invested','Withdrawn','Closing','Gain']],
-    body: r.rows.map(row=>[row.asset.name, ASSET_TYPE_LABELS[row.asset.type], fmtMoney(row.openingVal), fmtMoney(row.invested), fmtMoney(row.withdrawn), fmtMoney(row.closingVal), fmtMoney(row.gain)]),
+    body: r.rows.map(row=>[row.asset.name, assetTypeLabel(row.asset), fmtMoney(row.openingVal), fmtMoney(row.invested), fmtMoney(row.withdrawn), fmtMoney(row.closingVal), fmtMoney(row.gain)]),
     theme:'grid', styles:{fontSize:8}, headStyles:{fillColor:[20,31,60]}
   });
   y = doc.lastAutoTable.finalY + 10;
@@ -2178,7 +2284,7 @@ function downloadFyReportPDF(){
    ========================================================================== */
 function renderNavUpdatePage(){
   const el = document.getElementById('nav-update-table');
-  const relevant = getFilteredAssets().filter(a=>a.type!=='fd');
+  const relevant = getFilteredAssets().filter(a=>!UNIT_LESS_TYPES.includes(a.type));
   if (relevant.length===0){ el.innerHTML = emptyState('No priced assets', 'Mutual funds, stocks, bonds and gold appear here for manual price updates.'); return; }
   el.innerHTML = `<table><thead><tr><th>Asset</th><th>Currency</th><th>Current value</th><th>New value</th><th></th></tr></thead><tbody>
     ${relevant.map(a=>{ const sym = CURRENCY_SYMBOLS[a.currency||'INR']||'₹'; return `<tr>
@@ -2441,18 +2547,88 @@ function downloadFile(filename, content, mime){
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
+let fxAutoFetchInterval = null;
+
 function renderSettingsPage(){
   ensureSettings();
   const fxInput = document.getElementById('settings-fx-rate');
   if (fxInput && document.activeElement !== fxInput) fxInput.value = state.settings.usdInrRate;
+  renderFxSettingsUI();
+}
+function renderFxSettingsUI(){
+  ensureSettings();
+  document.querySelectorAll('#fx-autofetch-toggle button').forEach(b=>{
+    b.classList.toggle('active', (b.dataset.val==='on') === !!state.settings.autoFetchFx);
+  });
+  const lastEl = document.getElementById('fx-last-updated');
+  if (lastEl){
+    lastEl.textContent = state.settings.fxLastUpdated
+      ? `Live rate last fetched: ${new Date(state.settings.fxLastUpdated).toLocaleString('en-IN')}`
+      : 'Not auto-updated yet — currently using a manually entered rate.';
+  }
 }
 function saveFxRate(){
   const v = parseFloat(document.getElementById('settings-fx-rate').value);
   if (isNaN(v) || v<=0){ showToast('Enter a valid exchange rate'); return; }
   ensureSettings();
   state.settings.usdInrRate = v;
+  state.settings.fxLastUpdated = null; // this is now a manual override, not a live fetch
   showToast(`Exchange rate updated: 1 USD = ₹${fmtNum(v,2)}`);
   renderAll();
+}
+
+// Fetches the live USD→INR rate from free, no-key public APIs. Tries Frankfurter first
+// (ECB-sourced, well-documented for direct browser use), falling back to a second provider
+// if that fails. Only ever runs when the user clicks the button, turns auto-update on, or
+// (if already on) on a periodic timer — never silently on every render.
+async function fetchLatestFxRate(){
+  const btn = document.getElementById('btn-fetch-fx');
+  if (btn){ btn.disabled = true; btn.textContent = 'Fetching…'; }
+  let rate = null, err1 = null, err2 = null;
+  try{
+    const res = await fetch('https://api.frankfurter.app/latest?from=USD&to=INR');
+    if (!res.ok) throw new Error('Request failed: '+res.status);
+    const data = await res.json();
+    if (!data.rates || !data.rates.INR) throw new Error('Unexpected response format');
+    rate = data.rates.INR;
+  }catch(e1){ err1 = e1; }
+  if (rate===null){
+    try{
+      const res2 = await fetch('https://open.er-api.com/v6/latest/USD');
+      if (!res2.ok) throw new Error('Request failed: '+res2.status);
+      const data2 = await res2.json();
+      if (data2.result !== 'success' || !data2.rates || !data2.rates.INR) throw new Error('Unexpected response format');
+      rate = data2.rates.INR;
+    }catch(e2){ err2 = e2; }
+  }
+  if (rate!==null){
+    ensureSettings();
+    state.settings.usdInrRate = rate;
+    state.settings.fxLastUpdated = new Date().toISOString();
+    renderAll();
+    showToast(`Live rate fetched: 1 USD = ₹${fmtNum(rate,2)}`);
+  } else {
+    console.error('FX auto-update failed', err1, err2);
+    showToast("Couldn't fetch a live rate (offline, or both providers are unreachable) — you can still enter it manually");
+  }
+  if (btn){ btn.disabled = false; btn.textContent = '🔄 Fetch latest rate'; }
+}
+
+function setAutoFetchFx(on){
+  ensureSettings();
+  state.settings.autoFetchFx = on;
+  renderFxSettingsUI();
+  restartFxAutoFetchInterval();
+  if (on){ showToast('Auto-update enabled — fetching the live rate now'); fetchLatestFxRate(); }
+  else showToast('Auto-update turned off — back to manual entry');
+}
+
+function restartFxAutoFetchInterval(){
+  ensureSettings();
+  clearInterval(fxAutoFetchInterval);
+  if (state.settings.autoFetchFx){
+    fxAutoFetchInterval = setInterval(fetchLatestFxRate, 4*60*60*1000); // every 4 hours
+  }
 }
 
 function exportJSON(){
@@ -2473,6 +2649,7 @@ function importJSON(file){
       currentAccountFilter = 'all';
       renderAll();
       restartAutoBackupIntervals();
+      restartFxAutoFetchInterval();
       showToast('Backup restored');
     }catch(err){
       showToast('Could not read this file — is it a FinPlan JSON backup?');
@@ -2486,7 +2663,7 @@ function exportHoldingsCSV(){
   holdings.forEach(h=>{
     const hx = xirr(h.cashflows);
     const acc = getAccount(h.asset.accountId);
-    csv += `"${acc?acc.name:''}","${h.asset.name}",${ASSET_TYPE_LABELS[h.asset.type]},${h.nativeCurrency},${h.asset.type==='fd'?'':fmtNum(h.units,3)},${h.invested.toFixed(2)},${h.currentValue.toFixed(2)},${h.gain.toFixed(2)},${hx!==null?hx.toFixed(2):''}\n`;
+    csv += `"${acc?acc.name:''}","${h.asset.name}",${assetTypeLabel(h.asset)},${h.nativeCurrency},${UNIT_LESS_TYPES.includes(h.asset.type)?'':fmtNum(h.units,3)},${h.invested.toFixed(2)},${h.currentValue.toFixed(2)},${h.gain.toFixed(2)},${hx!==null?hx.toFixed(2):''}\n`;
   });
   downloadFile(`finplan_holdings_${todayISO()}.csv`, csv, 'text/csv');
 }
@@ -2506,6 +2683,7 @@ function confirmWipe(){
   clearInterval(autoBackupDriveInterval);
   clearInterval(autoBackupLocalInterval);
   clearTimeout(autoBackupDebounceTimer);
+  clearInterval(fxAutoFetchInterval);
   lastDriveAutoSnapshot = null;
   lastLocalAutoSnapshot = null;
   state = { accounts:[], assets:[], transactions:[], goals:[], settings:{usdInrRate:83.5, displayCurrency:'INR'}, meta:{createdAt:new Date().toISOString()} };
@@ -2535,7 +2713,13 @@ function loadSampleData(){
   const a7 = {id:uid('asset'), name:'Axis Bluechip Fund', type:'equity_mf', nav:56.20, accountId:acctSpouse.id, currency:'INR'};
   const a8 = {id:uid('asset'), name:'Digital Gold', type:'gold', nav:7150, accountId:acctSelf.id, currency:'INR'};
   const a9 = {id:uid('asset'), name:'Apple Inc (AAPL)', type:'us_stock', nav:225, accountId:acctSelf.id, currency:'USD'};
-  state.assets.push(a1,a2,a3,a4,a5,a6,a7,a8,a9);
+  const a10 = {id:uid('asset'), name:'PPF Account', type:'ppf', nav:0, accountId:acctSelf.id, currency:'INR'};
+  const a11 = {id:uid('asset'), name:"Daughter's SSY Account", type:'ssy', nav:0, accountId:acctSpouse.id, currency:'INR'};
+  const a12 = {id:uid('asset'), name:'Post Office RD 2027', type:'rd', nav:0, accountId:acctSelf.id, currency:'INR'};
+  const a13 = {id:uid('asset'), name:'NPS (Auto Choice)', type:'nps', npsTier:'tier1', nav:24.80, accountId:acctSelf.id, currency:'INR'};
+  const a14 = {id:uid('asset'), name:'NPS Tier 2 (Equity)', type:'nps', npsTier:'tier2', nav:18.40, accountId:acctSelf.id, currency:'INR'};
+  const a15 = {id:uid('asset'), name:'Friends Circle Chit (20L, 20mo)', type:'chit', nav:0, accountId:acctSelf.id, currency:'INR'};
+  state.assets.push(a1,a2,a3,a4,a5,a6,a7,a8,a9,a10,a11,a12,a13,a14,a15);
 
   function m(dateOffsetMonths){ return addMonths(todayISO(), -dateOffsetMonths); }
   for(let i=24;i>=1;i--){
@@ -2562,11 +2746,46 @@ function loadSampleData(){
   state.transactions.push({id:uid('txn'), assetId:a9.id, type:'buy', date:m(7), amount:1500, units:1500/195, navPrice:195, rate:null, tenure:null});
   state.transactions.push({id:uid('txn'), assetId:a9.id, type:'dividend', date:m(3), amount:12, units:null, navPrice:null, rate:null, tenure:null});
 
+  // PPF: yearly contributions + annual interest credit (compounds annually)
+  state.transactions.push({id:uid('txn'), assetId:a10.id, type:'deposit', date:m(36), amount:150000, units:null, navPrice:null, rate:7.1, tenure:null});
+  state.transactions.push({id:uid('txn'), assetId:a10.id, type:'deposit', date:m(24), amount:150000, units:null, navPrice:null, rate:7.1, tenure:null});
+  state.transactions.push({id:uid('txn'), assetId:a10.id, type:'deposit', date:m(12), amount:150000, units:null, navPrice:null, rate:7.1, tenure:null});
+  state.transactions.push({id:uid('txn'), assetId:a10.id, type:'interest_credit', date:m(1), amount:16200, units:null, navPrice:null, rate:null, tenure:null});
+
+  // SSY: yearly contributions for a girl child, higher rate, compounds annually
+  state.transactions.push({id:uid('txn'), assetId:a11.id, type:'deposit', date:m(24), amount:100000, units:null, navPrice:null, rate:8.2, tenure:null});
+  state.transactions.push({id:uid('txn'), assetId:a11.id, type:'deposit', date:m(12), amount:100000, units:null, navPrice:null, rate:8.2, tenure:null});
+  state.transactions.push({id:uid('txn'), assetId:a11.id, type:'interest_credit', date:m(1), amount:15250, units:null, navPrice:null, rate:null, tenure:null});
+
+  // RD: fixed monthly deposits, compounds quarterly
+  for(let i=18;i>=1;i--){
+    state.transactions.push({id:uid('txn'), assetId:a12.id, type:'deposit', date:m(i), amount:5000, units:null, navPrice:null, rate:6.9, tenure:36});
+  }
+
+  // NPS: unit/NAV based like a mutual fund — monthly contributions
+  for(let i=20;i>=1;i--){
+    state.transactions.push({id:uid('txn'), assetId:a13.id, type:'sip', date:m(i), amount:5000, units: 5000/(19+ (20-i)*0.3), navPrice: 19+(20-i)*0.3, rate:null, tenure:null});
+  }
+  // NPS Tier 2: same NAV-based mechanics, but voluntary/liquid — a couple of lump-sum contributions
+  state.transactions.push({id:uid('txn'), assetId:a14.id, type:'buy', date:m(9), amount:20000, units:20000/16.2, navPrice:16.2, rate:null, tenure:null});
+  state.transactions.push({id:uid('txn'), assetId:a14.id, type:'buy', date:m(3), amount:15000, units:15000/17.5, navPrice:17.5, rate:null, tenure:null});
+
+  // Chit fund: monthly installments; won the auction partway through and received prize money,
+  // then kept paying the remaining installments; a small dividend also came through one month.
+  for(let i=14;i>=8;i--){
+    state.transactions.push({id:uid('txn'), assetId:a15.id, type:'installment', date:m(i), amount:10000, units:null, navPrice:null, rate:null, tenure:null});
+  }
+  state.transactions.push({id:uid('txn'), assetId:a15.id, type:'prize_money', date:m(8), amount:165000, units:null, navPrice:null, rate:null, tenure:null});
+  state.transactions.push({id:uid('txn'), assetId:a15.id, type:'dividend', date:m(6), amount:800, units:null, navPrice:null, rate:null, tenure:null});
+  for(let i=7;i>=1;i--){
+    state.transactions.push({id:uid('txn'), assetId:a15.id, type:'installment', date:m(i), amount:10000, units:null, navPrice:null, rate:null, tenure:null});
+  }
+
   state.goals.push({
     id:uid('goal'), name:'Retirement', targetAmount:30000000, targetDate: addMonths(todayISO(), 12*22),
     accountId:acctSelf.id,
     inflation:6, returnRate:11, stepup:10, equityNow:80, equityFinal:20, glideYears:5,
-    linkedAssetIds:[a1.id,a2.id,a3.id], manualValue:0
+    linkedAssetIds:[a1.id,a2.id,a3.id,a10.id,a13.id], manualValue:0
   });
   state.goals.push({
     id:uid('goal'), name:"Child's Education", targetAmount:5000000, targetDate: addMonths(todayISO(), 12*10),
@@ -2575,7 +2794,7 @@ function loadSampleData(){
     linkedAssetIds:[a7.id], manualValue:250000
   });
 
-  showToast('Sample data loaded (2 accounts: Self & Spouse; includes Gold & a US Stock)');
+  showToast('Sample data loaded — now includes Gold, US Stock, PPF, SSY, RD, NPS (Tier 1 & 2) and a Chit Fund');
   renderAll();
 }
 document.getElementById('btn-sample-data').addEventListener('click', loadSampleData);
@@ -2773,6 +2992,7 @@ async function restoreFromDriveFile(fileId){
     closeModal('modal-gdrive-restore');
     renderAll();
     restartAutoBackupIntervals();
+    restartFxAutoFetchInterval();
     showToast('Restored from Google Drive');
   }catch(err){
     showToast('Restore failed — is this a valid FinPlan backup file?');
