@@ -593,9 +593,9 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
           <p style="color:var(--text-dim); font-size:12.5px;">In <a href="https://console.cloud.google.com/" target="_blank" rel="noopener">Google Cloud Console</a>: create a project → enable the <strong>Google Drive API</strong> → create an <strong>OAuth Client ID</strong> (type: Web application) → add the URL you're hosting this file at (e.g. your GitHub Pages URL) under "Authorized JavaScript origins". Paste the Client ID below.</p>
           <div class="field" style="margin-top:10px;">
             <label>Google OAuth Client ID</label>
-            <input type="text" id="gdrive-client-id" placeholder="xxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.apps.googleusercontent.com">
+            <input type="text" id="gdrive-client-id" oninput="saveGdriveClientId()" placeholder="xxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.apps.googleusercontent.com">
           </div>
-          <div class="field-hint">Only stored in this tab's memory (include it in your JSON backup notes if you don't want to retype it — see hint below).</div>
+          <div class="field-hint">Saved automatically in this browser (via the "Auto-save to this browser" setting below) so you don't need to re-paste it each time you reopen the app. It's also included in your JSON/Drive backups.</div>
         </div>
         <div class="card">
           <div class="card-title">2. Connect &amp; backup</div>
@@ -952,6 +952,7 @@ function ensureSettings(){
   if (state.settings.autoFetchFx === undefined) state.settings.autoFetchFx = false;
   if (state.settings.fxLastUpdated === undefined) state.settings.fxLastUpdated = null;
   if (state.settings.autoSaveLocalStorage === undefined) state.settings.autoSaveLocalStorage = true;
+  if (state.settings.gdriveClientId === undefined) state.settings.gdriveClientId = '';
 }
 function ensureAutoBackupSettings(){
   ensureSettings();
@@ -2632,7 +2633,14 @@ function renderSettingsPage(){
   ensureSettings();
   const fxInput = document.getElementById('settings-fx-rate');
   if (fxInput && document.activeElement !== fxInput) fxInput.value = state.settings.usdInrRate;
+  const clientIdInput = document.getElementById('gdrive-client-id');
+  if (clientIdInput && document.activeElement !== clientIdInput) clientIdInput.value = state.settings.gdriveClientId || '';
   renderFxSettingsUI();
+}
+function saveGdriveClientId(){
+  ensureSettings();
+  state.settings.gdriveClientId = document.getElementById('gdrive-client-id').value.trim();
+  scheduleLocalStorageSave();
 }
 function renderFxSettingsUI(){
   ensureSettings();
@@ -2953,6 +2961,7 @@ function updateGDriveUI(connected){
 function connectGoogleDrive(){
   const clientId = document.getElementById('gdrive-client-id').value.trim();
   if (!clientId){ showToast('Paste your Google OAuth Client ID first (see setup steps above)'); return; }
+  saveGdriveClientId();
   if (!gdriveReady()){ showToast('Google sign-in script has not loaded yet — check your connection and try again in a moment'); return; }
   try{
     gdriveTokenClient = google.accounts.oauth2.initTokenClient({

@@ -84,10 +84,10 @@ you control:
 7. Click **Backup now** any time to save a timestamped JSON snapshot to your
    Drive, or **Restore…** to pick a previous one and load it back in.
 
-You'll need to re-paste the Client ID each time you open the app fresh
-(nothing is saved to local storage, by design — see the Privacy section
-below), but signing in again only takes a click once the Client ID is filled
-in.
+The Client ID is remembered automatically in this browser (via the "Auto-save
+to this browser" setting), so you shouldn't need to re-paste it each time you
+reopen the app — but you will need to sign in to Google again each fresh
+session, since the sign-in token itself isn't saved for security reasons.
 
 ---
 
