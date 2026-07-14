@@ -697,7 +697,7 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
             <button class="btn" id="btn-gdrive-restore" onclick="openGoogleDriveRestoreModal()" disabled>⬇ Restore…</button>
             <button class="btn btn-ghost" id="btn-gdrive-signout" onclick="signOutGoogleDrive()" style="display:none;">Sign out</button>
           </div>
-          <div class="field-hint" style="margin-top:10px;">Uses the restricted <code>drive.file</code> scope — FinPlan can only see backup files it creates itself, never the rest of your Drive. Once connected, FinPlan tries to silently reconnect each time you reopen the app (as long as you're still signed into Google in this browser) — click "Sign out" if you want it to stop.</div>
+          <div class="field-hint" style="margin-top:10px;">Uses the restricted <code>drive.file</code> scope — FinPlan can only see backup files it creates itself, never the rest of your Drive. Once connected, FinPlan keeps itself signed in automatically — silently renewing the connection every few minutes before it can expire, and reconnecting each time you reopen the app — as long as this tab stays open and you're still signed into Google in this browser. Click "Sign out" if you want it to stop.</div>
         </div>
       </div>
 
@@ -1478,6 +1478,15 @@ function computePortfolioXIRR(holdings){
   return xirr(allCf);
 }
 
+// XIRR using only assets you still actually hold (currentValue > 0, not matured/fully exited) —
+// this answers "what return am I getting on money still deployed right now", as distinct from
+// Portfolio XIRR which includes the historical cash flows of positions you've since fully sold
+// or that matured, and so reflects your all-time return across everything you've ever done.
+function computeCurrentHoldingsXIRR(holdings){
+  const active = holdings.filter(h=>!h.matured && h.currentValue>0.01);
+  return computePortfolioXIRR(active);
+}
+
 /* ==========================================================================
    DASHBOARD RENDER
    ========================================================================== */
@@ -1490,17 +1499,49 @@ function renderDashboard(){
   const holdings = computeHoldings();
   const totalInvested = holdings.reduce((s,h)=>s+h.invested,0);
   const totalCurrent = holdings.reduce((s,h)=>s+h.currentValue,0);
-  const totalGain = totalCurrent - totalInvested;
-  const gainPct = totalInvested>0 ? (totalGain/totalInvested*100) : null;
+
+  // All-time realized gain from anything ever sold/redeemed/matured (FIFO), across every asset —
+  // not just the current financial year. This also gives us the TRUE remaining cost basis of
+  // what's still held: simple cash-flow "net invested" gets distorted by profitable/lossy partial
+  // sales (it nets out sale proceeds, not the cost basis of the units sold), which would silently
+  // double-count gains if we just added a separately-computed realized figure on top of it.
+  const allTimeAssets = getFilteredAssets();
+  const realizedGains = computeRealizedGainsFIFO(allTimeAssets, '1900-01-01', todayISO());
+  const totalRealizedGain = realizedGains.reduce((s,c)=>s+c.gain,0);
+  const remainingCostBasisByAsset = realizedGains.remainingCostBasisByAsset || {};
+
+  let trueCostBasisTotal = 0;
+  for(const h of holdings){
+    const rem = remainingCostBasisByAsset[h.asset.id];
+    trueCostBasisTotal += rem ? rem.costBasis : h.invested; // FD/PPF/SSY/RD/Chit aren't FIFO-tracked, use their own invested figure
+  }
+  const currentGain = totalCurrent - trueCostBasisTotal; // unrealized gain on what's still held
+  const currentGainPct = trueCostBasisTotal>0 ? (currentGain/trueCostBasisTotal*100) : null;
+
+  const totalGain = currentGain + totalRealizedGain;
+  // Base the % on total capital ever put in (not netted for past sales) — using the
+  // sale-distorted "net invested" figure here would inflate the percentage misleadingly.
+  let totalEverInvested = 0;
+  for(const asset of allTimeAssets){
+    const cur = asset.currency || 'INR';
+    for(const t of state.transactions){
+      if (t.assetId===asset.id && INVEST_TXN_TYPES.includes(t.type)) totalEverInvested += toDisplayCurrency(t.amount, cur);
+    }
+  }
+  const totalGainPct = totalEverInvested>0 ? (totalGain/totalEverInvested*100) : null;
+
   const portXirr = computePortfolioXIRR(holdings);
+  const currentXirr = computeCurrentHoldingsXIRR(holdings);
   const totalIncome = computeIncomeEvents().reduce((s,e)=>s+e.amount,0);
 
   const statsEl = document.getElementById('dashboard-stats');
   statsEl.innerHTML = `
     <div class="card"><div class="card-title">Total Invested</div><div class="stat-value">${fmtMoney(totalInvested)}</div><div class="stat-sub">Across ${holdings.length} holding(s)</div></div>
     <div class="card"><div class="card-title">Current Value</div><div class="stat-value">${fmtMoney(totalCurrent)}</div><div class="stat-sub">As of today</div></div>
-    <div class="card"><div class="card-title">Total Gain</div><div class="stat-value ${totalGain>=0?'pos':'neg'}">${totalGain>=0?'+':''}${fmtMoney(totalGain)}</div><div class="stat-sub ${gainPct>=0?'pos':'neg'}">${gainPct!==null?(gainPct>=0?'+':'')+fmtPct(gainPct):'—'}</div></div>
-    <div class="card"><div class="card-title">Portfolio XIRR</div><div class="stat-value ${portXirr>=0?'pos':'neg'}">${portXirr!==null?fmtPct(portXirr):'—'}</div><div class="stat-sub">Cash-flow based annualised return</div></div>
+    <div class="card"><div class="card-title">Current Gain</div><div class="stat-value ${currentGain>=0?'pos':'neg'}">${currentGain>=0?'+':''}${fmtMoney(currentGain)}</div><div class="stat-sub ${currentGainPct>=0?'pos':'neg'}">${currentGainPct!==null?(currentGainPct>=0?'+':'')+fmtPct(currentGainPct):'—'} · unrealised, on current holdings</div></div>
+    <div class="card"><div class="card-title">Total Gain</div><div class="stat-value ${totalGain>=0?'pos':'neg'}">${totalGain>=0?'+':''}${fmtMoney(totalGain)}</div><div class="stat-sub ${totalGainPct>=0?'pos':'neg'}">${totalGainPct!==null?(totalGainPct>=0?'+':'')+fmtPct(totalGainPct):'—'}${totalRealizedGain!==0?` · incl. ${fmtMoney(totalRealizedGain)} realised from sales`:''}</div></div>
+    <div class="card"><div class="card-title">Current Holding XIRR</div><div class="stat-value ${currentXirr>=0?'pos':'neg'}">${currentXirr!==null?fmtPct(currentXirr):'—'}</div><div class="stat-sub">On money still deployed right now</div></div>
+    <div class="card"><div class="card-title">Portfolio XIRR</div><div class="stat-value ${portXirr>=0?'pos':'neg'}">${portXirr!==null?fmtPct(portXirr):'—'}</div><div class="stat-sub">All-time, incl. positions since exited</div></div>
     <div class="card"><div class="card-title">Interest &amp; Dividend Income</div><div class="stat-value pos">${fmtMoney(totalIncome)}</div><div class="stat-sub">All-time, from bonds, FDs, MFs &amp; stocks</div></div>
   `;
 
@@ -2234,8 +2275,14 @@ function getAvailableFYs(){
 }
 
 // Simplified FIFO realised-gains calculator. Indicative only — see disclaimer in the UI.
+// Also exposes, per asset, the true remaining cost basis of whatever units are still held
+// (results.remainingCostBasisByAsset) — this matters because simple cash-flow "net invested"
+// tracking gets distorted by profitable/lossy partial sales (the sale proceeds, not the cost
+// basis of the units sold, get netted out), which would otherwise silently double-count or
+// miss gains when combining unrealized + realized figures elsewhere (e.g. the Dashboard).
 function computeRealizedGainsFIFO(assets, startDate, endDate){
   const results = [];
+  const remainingCostBasisByAsset = {};
   for(const asset of assets){
     if (UNIT_LESS_TYPES.includes(asset.type)) continue;
     const cur = asset.currency || 'INR';
@@ -2286,8 +2333,14 @@ function computeRealizedGainsFIFO(assets, startDate, endDate){
         }
       }
     }
+    remainingCostBasisByAsset[asset.id] = {
+      units: lots.reduce((s,l)=>s+l.units,0),
+      costBasis: lots.reduce((s,l)=>s+l.units*l.costPerUnit,0)
+    };
   }
-  return results.sort((a,b)=>new Date(a.date)-new Date(b.date));
+  results.sort((a,b)=>new Date(a.date)-new Date(b.date));
+  results.remainingCostBasisByAsset = remainingCostBasisByAsset;
+  return results;
 }
 
 function computeFYReport(fyStartYear){
@@ -3154,7 +3207,8 @@ function attemptGdriveAutoReconnect(retriesLeft){
   ensureSettings();
   if (!state.settings.gdriveWasConnected || !state.settings.gdriveClientId) return;
   if (!gdriveReady()){
-    if (retriesLeft > 0) setTimeout(()=>attemptGdriveAutoReconnect(retriesLeft-1), 300);
+    if (retriesLeft > 0) setTimeout(()=>attemptGdriveAutoReconnect(retriesLeft-1), 400);
+    else renderAutoBackupUI(); // give up waiting for the script — status stays "not connected"
     return;
   }
   try{
@@ -3162,15 +3216,39 @@ function attemptGdriveAutoReconnect(retriesLeft){
       client_id: state.settings.gdriveClientId,
       scope: 'https://www.googleapis.com/auth/drive.file',
       callback: (resp) => {
-        if (resp.error){ updateGDriveUI(false); renderAutoBackupUI(); return; }
+        if (resp.error){
+          updateGDriveUI(false);
+          renderAutoBackupUI();
+          return;
+        }
         gdriveAccessToken = resp.access_token;
         gdriveTokenExpiry = Date.now() + (resp.expires_in*1000);
         updateGDriveUI(true);
         renderAutoBackupUI();
+        startGdriveKeepAlive();
       }
     });
     gdriveTokenClient.requestAccessToken({ prompt: '' });
-  }catch(e){ /* leave disconnected — person can click Connect manually */ }
+  }catch(e){ renderAutoBackupUI(); /* leave disconnected — person can click Connect manually */ }
+}
+
+// Keeps the connection alive for as long as this tab stays open and the person remains signed
+// into Google in this browser — checks periodically and silently renews the token well before
+// it actually expires, rather than waiting for something else to notice it's stale. This is the
+// practical ceiling for "always connected" in a pure client-side app with no backend server:
+// there's no such thing as a permanent token here, only proactive, silent renewal.
+let gdriveKeepAliveInterval = null;
+function startGdriveKeepAlive(){
+  clearInterval(gdriveKeepAliveInterval);
+  gdriveKeepAliveInterval = setInterval(async ()=>{
+    if (!gdriveAccessToken) return;
+    const msUntilExpiry = gdriveTokenExpiry - Date.now();
+    if (msUntilExpiry < 10*60*1000){ // less than 10 minutes left — renew now, before it lapses
+      const ok = await trySilentDriveRefresh();
+      updateGDriveUI(ok);
+      renderAutoBackupUI();
+    }
+  }, 5*60*1000); // check every 5 minutes
 }
 
 function connectGoogleDrive(){
@@ -3191,6 +3269,7 @@ function connectGoogleDrive(){
         scheduleLocalStorageSave();
         updateGDriveUI(true);
         showToast('Connected to Google Drive');
+        startGdriveKeepAlive();
       }
     });
     gdriveTokenClient.requestAccessToken({ prompt: gdriveAccessToken ? '' : 'consent' });
@@ -3205,6 +3284,7 @@ function signOutGoogleDrive(){
     google.accounts.oauth2.revoke(gdriveAccessToken, ()=>{});
   }
   gdriveAccessToken = null; gdriveTokenExpiry = 0;
+  clearInterval(gdriveKeepAliveInterval);
   ensureSettings();
   state.settings.gdriveWasConnected = false;
   scheduleLocalStorageSave();
@@ -3688,7 +3768,7 @@ function renderAll(){
 const restoredFromLocalStorage = loadStateFromLocalStorage();
 renderAll();
 if (restoredFromLocalStorage) showToast('Restored your data from this browser');
-attemptGdriveAutoReconnect(15);
+attemptGdriveAutoReconnect(30);
 </script>
 </body>
 </html>
