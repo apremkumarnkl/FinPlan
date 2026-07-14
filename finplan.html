@@ -1497,7 +1497,13 @@ function renderDashboard(){
   if (sampleBtn) sampleBtn.style.display = state.transactions.length > 0 ? 'none' : 'inline-flex';
 
   const holdings = computeHoldings();
-  const totalInvested = holdings.reduce((s,h)=>s+h.invested,0);
+  // Total Invested should only reflect positions you actually still have money in — exclude
+  // anything fully exited (units or current value at zero) and anything where the net-invested
+  // figure has gone negative (which can happen after a profitable partial sale distorts the
+  // simple cash-flow tally — see Current/Total Gain), since neither represents real capital
+  // currently deployed.
+  const investedHoldings = holdings.filter(h => h.invested >= 0 && h.units !== 0 && h.currentValue !== 0);
+  const totalInvested = investedHoldings.reduce((s,h)=>s+h.invested,0);
   const totalCurrent = holdings.reduce((s,h)=>s+h.currentValue,0);
 
   // All-time realized gain from anything ever sold/redeemed/matured (FIFO), across every asset —
@@ -1536,7 +1542,7 @@ function renderDashboard(){
 
   const statsEl = document.getElementById('dashboard-stats');
   statsEl.innerHTML = `
-    <div class="card"><div class="card-title">Total Invested</div><div class="stat-value">${fmtMoney(totalInvested)}</div><div class="stat-sub">Across ${holdings.length} holding(s)</div></div>
+    <div class="card"><div class="card-title">Total Invested</div><div class="stat-value">${fmtMoney(totalInvested)}</div><div class="stat-sub">Across ${investedHoldings.length} holding(s)</div></div>
     <div class="card"><div class="card-title">Current Value</div><div class="stat-value">${fmtMoney(totalCurrent)}</div><div class="stat-sub">As of today</div></div>
     <div class="card"><div class="card-title">Current Gain</div><div class="stat-value ${currentGain>=0?'pos':'neg'}">${currentGain>=0?'+':''}${fmtMoney(currentGain)}</div><div class="stat-sub ${currentGainPct>=0?'pos':'neg'}">${currentGainPct!==null?(currentGainPct>=0?'+':'')+fmtPct(currentGainPct):'—'} · unrealised, on current holdings</div></div>
     <div class="card"><div class="card-title">Total Gain</div><div class="stat-value ${totalGain>=0?'pos':'neg'}">${totalGain>=0?'+':''}${fmtMoney(totalGain)}</div><div class="stat-sub ${totalGainPct>=0?'pos':'neg'}">${totalGainPct!==null?(totalGainPct>=0?'+':'')+fmtPct(totalGainPct):'—'}${totalRealizedGain!==0?` · incl. ${fmtMoney(totalRealizedGain)} realised from sales`:''}</div></div>
