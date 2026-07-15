@@ -355,6 +355,7 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
     <div class="nav-item active" data-tab="dashboard"><span class="nav-icon">▦</span> Dashboard</div>
     <div class="nav-item" data-tab="transactions"><span class="nav-icon">≡</span> Transactions</div>
     <div class="nav-item" data-tab="assets"><span class="nav-icon">◆</span> Assets</div>
+    <div class="nav-item" data-tab="assettypes"><span class="nav-icon">▣</span> Asset Type Analysis</div>
     <div class="nav-item" data-tab="accounts"><span class="nav-icon">◐</span> Accounts</div>
     <div class="nav-item" data-tab="goals"><span class="nav-icon">◎</span> Goals</div>
     <div class="nav-item" data-tab="income"><span class="nav-icon">₹</span> Interest &amp; Dividends</div>
@@ -452,6 +453,62 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
       </div>
       <div class="table-wrap" id="assets-table"></div>
           <div class="table-pagination" id="assets-table-pagination"><button class="btn btn-sm btn-ghost page-prev" onclick="changeTablePage('assets-table', -1)">‹ Prev</button><span class="page-label"></span><button class="btn btn-sm btn-ghost page-next" onclick="changeTablePage('assets-table', 1)">Next ›</button></div>
+    </div>
+
+    <!-- ASSET TYPE ANALYSIS -->
+    <div id="page-assettypes" class="page" style="display:none;">
+      <div class="topbar">
+        <div>
+          <div class="page-title">Asset Type Analysis</div>
+          <div class="page-sub">Metrics, charts and holdings broken down by asset type</div>
+        </div>
+      </div>
+
+      <div class="page-sub" id="assettype-breadcrumb" style="margin-bottom:14px; font-size:13px;"></div>
+
+      <div class="pill-toggle" id="assettype-filter-toggle" style="flex-wrap:wrap; width:auto; margin-bottom:18px;"></div>
+
+      <div class="grid grid-4" id="assettype-stats"></div>
+
+      <div class="two-col" style="margin-top:16px;">
+        <div class="card">
+          <div class="card-title" id="chart-assettype-allocation-title">Current Value by Type <span style="font-weight:400; color:var(--text-faint); text-transform:none;">— click a slice to drill in</span></div>
+          <div class="chart-box"><canvas id="chart-assettype-allocation"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-title" id="chart-assettype-bar-title">Invested vs Current Value by Type <span style="font-weight:400; color:var(--text-faint); text-transform:none;">— click a bar to drill in</span></div>
+          <div class="chart-box"><canvas id="chart-assettype-bar"></canvas></div>
+        </div>
+      </div>
+
+      <div class="section-title">Type-wise summary <span style="font-weight:400; color:var(--text-faint); font-size:12px;">— click a row to drill in</span></div>
+      <div class="table-filter-bar">
+        <input type="text" class="table-filter-input" id="assettype-summary-table-search" placeholder="🔍 Filter..." oninput="onTableFilterInput('assettype-summary-table', this.value)">
+        <select class="table-pagesize-select" onchange="onTablePageSizeChange('assettype-summary-table', this.value)"><option value="10">10/page</option><option value="25">25/page</option><option value="50">50/page</option><option value="all">All</option></select>
+        <span class="table-filter-count" id="assettype-summary-table-filter-count"></span>
+      </div>
+      <div class="table-wrap" id="assettype-summary-table"></div>
+      <div class="table-pagination" id="assettype-summary-table-pagination"><button class="btn btn-sm btn-ghost page-prev" onclick="changeTablePage('assettype-summary-table', -1)">‹ Prev</button><span class="page-label"></span><button class="btn btn-sm btn-ghost page-next" onclick="changeTablePage('assettype-summary-table', 1)">Next ›</button></div>
+
+      <div class="section-title" id="assettype-holdings-title">Holdings <span style="font-weight:400; color:var(--text-faint); font-size:12px;">— click a row to see its transactions</span></div>
+      <div class="table-filter-bar">
+        <input type="text" class="table-filter-input" id="assettype-holdings-table-search" placeholder="🔍 Filter..." oninput="onTableFilterInput('assettype-holdings-table', this.value)">
+        <select class="table-pagesize-select" onchange="onTablePageSizeChange('assettype-holdings-table', this.value)"><option value="10">10/page</option><option value="25">25/page</option><option value="50">50/page</option><option value="all">All</option></select>
+        <span class="table-filter-count" id="assettype-holdings-table-filter-count"></span>
+      </div>
+      <div class="table-wrap" id="assettype-holdings-table"></div>
+      <div class="table-pagination" id="assettype-holdings-table-pagination"><button class="btn btn-sm btn-ghost page-prev" onclick="changeTablePage('assettype-holdings-table', -1)">‹ Prev</button><span class="page-label"></span><button class="btn btn-sm btn-ghost page-next" onclick="changeTablePage('assettype-holdings-table', 1)">Next ›</button></div>
+
+      <div id="assettype-drilldown-section" style="display:none;">
+        <div class="section-title" id="assettype-drilldown-title">Transactions</div>
+        <div class="table-filter-bar">
+          <input type="text" class="table-filter-input" id="assettype-drilldown-table-search" placeholder="🔍 Filter..." oninput="onTableFilterInput('assettype-drilldown-table', this.value)">
+          <select class="table-pagesize-select" onchange="onTablePageSizeChange('assettype-drilldown-table', this.value)"><option value="10">10/page</option><option value="25">25/page</option><option value="50">50/page</option><option value="all">All</option></select>
+          <span class="table-filter-count" id="assettype-drilldown-table-filter-count"></span>
+        </div>
+        <div class="table-wrap" id="assettype-drilldown-table"></div>
+        <div class="table-pagination" id="assettype-drilldown-table-pagination"><button class="btn btn-sm btn-ghost page-prev" onclick="changeTablePage('assettype-drilldown-table', -1)">‹ Prev</button><span class="page-label"></span><button class="btn btn-sm btn-ghost page-next" onclick="changeTablePage('assettype-drilldown-table', 1)">Next ›</button></div>
+      </div>
     </div>
 
     <!-- ACCOUNTS -->
@@ -783,13 +840,13 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
       </div>
       <div class="field">
         <label>Transaction type</label>
-        <select id="txn-type"></select>
+        <select id="txn-type" onchange="onTxnTypeChange()"></select>
       </div>
       <div class="field">
         <label>Date</label>
         <input type="date" id="txn-date">
       </div>
-      <div class="field">
+      <div class="field" id="txn-amount-field">
         <label id="txn-amount-label">Amount (₹)</label>
         <input type="number" id="txn-amount" step="0.01" placeholder="e.g. 10000">
       </div>
@@ -808,6 +865,11 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
       <div class="field" id="txn-tenure-field" style="display:none;">
         <label>Tenure (months)</label>
         <input type="number" id="txn-tenure" step="1" placeholder="e.g. 24">
+      </div>
+      <div class="field" id="txn-splitratio-field" style="display:none;">
+        <label>Split ratio (new shares per 1 old share)</label>
+        <input type="number" id="txn-splitratio" step="0.01" placeholder="e.g. 2 for a 1:2 split, 0.5 for a 2:1 reverse split">
+        <div class="field-hint">A 1:2 split (1 share becomes 2) is ratio 2. A 2:1 reverse split (2 shares become 1) is ratio 0.5.</div>
       </div>
     </div>
     <div class="modal-actions">
@@ -1142,10 +1204,10 @@ function assetTypeLabel(asset){
 
 const MF_TXN_TYPES = [
   ['buy','Buy'], ['purchase','Purchase'], ['lumpsum','Lumpsum'], ['sip','SIP'], ['redeem','Redemption'], ['sell','Sell'],
-  ['switch_in','Switch In'], ['switch_out','Switch Out'],
+  ['switch_in','Switch In'], ['switch_out','Switch Out'], ['bonus','Bonus Units'],
   ['dividend_payout','Dividend (Payout)'], ['dividend_reinvest','Dividend (Reinvest)']
 ];
-const STOCK_TXN_TYPES = [['buy','Buy'], ['sell','Sell'], ['dividend','Dividend']];
+const STOCK_TXN_TYPES = [['buy','Buy'], ['sell','Sell'], ['dividend','Dividend'], ['bonus','Bonus Shares'], ['split','Stock Split']];
 const GOLD_TXN_TYPES = [['buy','Purchase'], ['sell','Sell']];
 const BOND_TXN_TYPES = [['buy','Purchase'], ['interest_credit','Interest (Coupon)'], ['sell','Sell'], ['maturity','Maturity']];
 const FD_TXN_TYPES = [['deposit','Deposit Opened'], ['interest_credit','Interest Credit'], ['maturity','Maturity']];
@@ -1282,7 +1344,7 @@ function computeElssLockIn(asset){
     let u = t.units;
     if ((u===null||u===undefined||u==='') && navp>0 && t.amount) u = t.amount/navp;
     u = Number(u)||0;
-    if (['buy','purchase','lumpsum','sip','switch_in'].includes(t.type)){
+    if (['buy','purchase','lumpsum','sip','switch_in','bonus'].includes(t.type)){
       lots.push({ date:t.date, units:u, unlockDate: addMonths(t.date, ELSS_LOCKIN_MONTHS) });
     } else if (['redeem','switch_out','sell'].includes(t.type)){
       let remaining = u;
@@ -1448,6 +1510,10 @@ function computeHoldings(assetsOverride, asOfDate){
           cashflows.push({date:t.date, amount:t.amount}); break; // cash out of fund, doesn't change units
         case 'dividend_reinvest':
           units += u; cashflows.push({date:t.date, amount:0}); break; // neutral, reinvested
+        case 'bonus':
+          units += u; break; // free units — no cash flow, no change to invested amount
+        case 'split':
+          units *= (t.splitRatio || 1); break; // pure unit-count/price rebase — no cash flow, no change to invested amount
         case 'maturity':
           matured = true; units = 0; netInvested = 0; cashflows.push({date:t.date, amount:t.amount}); break; // e.g. NPS retirement withdrawal
         default: break;
@@ -1721,8 +1787,8 @@ function renderTxnTable(txns, showActions=true){
         <td>${fmtDate(t.date)}</td>
         <td>${a?a.name:'—'}</td>
         <td><span class="badge ${a?ASSET_TYPE_BADGE[a.type]:''}">${a?txnTypeLabel(a.type,t.type):t.type}</span></td>
-        <td>${fmtMoney(t.amount, cur)}</td>
-        <td>${t.units?fmtNum(t.units,3):'—'}</td>
+        <td>${t.type==='bonus'||t.type==='split' ? '—' : fmtMoney(t.amount, cur)}</td>
+        <td>${t.type==='split' ? `1 : ${fmtNum(t.splitRatio,2)}` : (t.units?fmtNum(t.units,3):'—')}</td>
         <td>${t.navPrice?sym+fmtNum(t.navPrice,4):'—'}</td>
         ${showActions?`<td>
           <button class="icon-btn" onclick="editTxn('${t.id}')">✎</button>
@@ -1768,6 +1834,7 @@ function openTxnModal(existing){
   document.getElementById('txn-navprice').value = existing && existing.navPrice ? existing.navPrice : '';
   document.getElementById('txn-rate').value = existing && existing.rate ? existing.rate : '';
   document.getElementById('txn-tenure').value = existing && existing.tenure ? existing.tenure : '';
+  document.getElementById('txn-splitratio').value = existing && existing.splitRatio ? existing.splitRatio : '';
   if (existing) document.getElementById('txn-type').value = existing.type;
   openModalById('modal-txn');
 }
@@ -1796,6 +1863,41 @@ function onTxnAssetChange(presetType){
   else navLabel = `NAV (${sym})`;
   document.getElementById('txn-navprice-label').textContent = navLabel;
   document.getElementById('txn-amount-label').textContent = `Amount (${sym})`;
+  onTxnTypeChange();
+}
+
+// Bonus shares/units and stock splits are non-cash corporate actions — no money changes hands,
+// so Amount (and NAV/price, for a split) don't apply. Layers on top of the asset-type defaults
+// set in onTxnAssetChange, since the same asset can have both regular and corporate-action
+// transactions.
+function onTxnTypeChange(){
+  const assetId = document.getElementById('txn-asset').value;
+  const asset = getAsset(assetId);
+  const type = document.getElementById('txn-type').value;
+  const splitField = document.getElementById('txn-splitratio-field');
+  const amountField = document.getElementById('txn-amount-field');
+  const unitsField = document.getElementById('txn-units-field');
+  const navField = document.getElementById('txn-navprice-field');
+  const isUnitless = asset ? UNIT_LESS_TYPES.includes(asset.type) : false;
+
+  if (type === 'split'){
+    splitField.style.display = 'block';
+    amountField.style.display = 'none';
+    unitsField.style.display = 'none';
+    navField.style.display = 'none';
+  } else if (type === 'bonus'){
+    splitField.style.display = 'none';
+    amountField.style.display = 'none';
+    unitsField.style.display = isUnitless ? 'none' : 'block';
+    navField.style.display = isUnitless ? 'none' : 'block';
+    document.getElementById('txn-units-label').textContent = 'Bonus units received';
+  } else {
+    splitField.style.display = 'none';
+    amountField.style.display = 'block';
+    unitsField.style.display = isUnitless ? 'none' : 'block';
+    navField.style.display = isUnitless ? 'none' : 'block';
+    document.getElementById('txn-units-label').textContent = (asset && asset.type==='gold') ? 'Grams' : 'Units';
+  }
 }
 
 function saveTxn(){
@@ -1805,14 +1907,18 @@ function saveTxn(){
   if (!asset){ showToast('Select an asset'); return; }
   const type = document.getElementById('txn-type').value;
   const date = document.getElementById('txn-date').value;
-  const amount = parseFloat(document.getElementById('txn-amount').value);
-  if (!date || isNaN(amount)){ showToast('Date and amount are required'); return; }
-  const units = parseFloat(document.getElementById('txn-units').value) || null;
-  const navPrice = parseFloat(document.getElementById('txn-navprice').value) || null;
+  const isCorporateAction = (type==='bonus' || type==='split');
+  const amount = isCorporateAction ? 0 : parseFloat(document.getElementById('txn-amount').value);
+  if (!date || (!isCorporateAction && isNaN(amount))){ showToast('Date and amount are required'); return; }
+  const units = type==='split' ? null : (parseFloat(document.getElementById('txn-units').value) || null);
+  if (type==='bonus' && !units){ showToast('Enter the number of bonus units/shares received'); return; }
+  const splitRatio = parseFloat(document.getElementById('txn-splitratio').value) || null;
+  if (type==='split' && (!splitRatio || splitRatio<=0)){ showToast('Enter a valid split ratio (e.g. 2 for a 1:2 split)'); return; }
+  const navPrice = type==='split' ? null : (parseFloat(document.getElementById('txn-navprice').value) || null);
   const rate = parseFloat(document.getElementById('txn-rate').value) || null;
   const tenure = parseInt(document.getElementById('txn-tenure').value) || null;
 
-  const txn = { id: id || uid('txn'), assetId, type, date, amount, units, navPrice, rate, tenure };
+  const txn = { id: id || uid('txn'), assetId, type, date, amount, units, navPrice, rate, tenure, splitRatio };
   const idx = state.transactions.findIndex(t=>t.id===txn.id);
   if (idx>=0) state.transactions[idx] = txn; else state.transactions.push(txn);
   closeModal('modal-txn');
@@ -1998,6 +2104,225 @@ function renderAssetsPage(){
     }).join('')}
   </tbody></table>`;
   applyStoredFilter('assets-table');
+}
+
+/* ==========================================================================
+   ASSET TYPE ANALYSIS — metrics, filter, charts and detailed holdings by type
+   ========================================================================== */
+let assetTypeFilter = 'all';
+let assetTypeDrilldownAssetId = null;
+let assetTypeAllocationChart = null;
+let assetTypeBarChart = null;
+
+function computeAssetTypeMetrics(holdings){
+  const byType = {}; // type -> {count, invested, currentValue, cashflows[]}
+  for(const h of holdings){
+    const type = h.asset.type;
+    if (!byType[type]) byType[type] = { type, count:0, invested:0, currentValue:0, cashflows:[] };
+    byType[type].count++;
+    byType[type].invested += h.invested;
+    byType[type].currentValue += h.currentValue;
+    byType[type].cashflows.push(...h.cashflows);
+  }
+  return Object.values(byType).map(t=>{
+    const gain = t.currentValue - t.invested;
+    const gainPct = t.invested>0 ? (gain/t.invested*100) : null;
+    return { type:t.type, count:t.count, invested:t.invested, currentValue:t.currentValue, gain, gainPct, xirr: xirr(t.cashflows) };
+  }).sort((a,b)=>b.currentValue-a.currentValue);
+}
+
+function setAssetTypeFilter(type){
+  assetTypeFilter = type;
+  assetTypeDrilldownAssetId = null; // changing type level clears any asset-level drill-down
+  renderAssetTypesPage();
+}
+function drillIntoAsset(assetId){
+  assetTypeDrilldownAssetId = assetId;
+  renderAssetTypesPage();
+  document.getElementById('assettype-drilldown-section').scrollIntoView({behavior:'smooth', block:'start'});
+}
+function clearAssetDrilldown(){
+  assetTypeDrilldownAssetId = null;
+  renderAssetTypesPage();
+}
+
+function renderAssetTypesPage(){
+  const holdings = computeHoldings();
+  const metrics = computeAssetTypeMetrics(holdings);
+  const typesPresent = metrics.map(m=>m.type);
+  if (assetTypeFilter!=='all' && !typesPresent.includes(assetTypeFilter)) assetTypeFilter = 'all';
+  if (assetTypeDrilldownAssetId && !holdings.some(h=>h.asset.id===assetTypeDrilldownAssetId)) assetTypeDrilldownAssetId = null;
+
+  // breadcrumb: All Types > [Type] > [Asset]
+  const drilldownAsset = assetTypeDrilldownAssetId ? getAsset(assetTypeDrilldownAssetId) : null;
+  const crumbs = [`<a onclick="setAssetTypeFilter('all')" style="cursor:pointer; color:${assetTypeFilter==='all'&&!drilldownAsset?'var(--text)':'var(--accent-2)'};">All Types</a>`];
+  if (assetTypeFilter!=='all'){
+    crumbs.push(`<a onclick="setAssetTypeFilter('${assetTypeFilter}')" style="cursor:pointer; color:${!drilldownAsset?'var(--text)':'var(--accent-2)'};">${ASSET_TYPE_LABELS[assetTypeFilter]||assetTypeFilter}</a>`);
+  }
+  if (drilldownAsset){
+    crumbs.push(`<span style="color:var(--text);">${drilldownAsset.name}</span>`);
+  }
+  document.getElementById('assettype-breadcrumb').innerHTML = crumbs.join(' <span style="color:var(--text-faint);">›</span> ');
+
+  const toggleEl = document.getElementById('assettype-filter-toggle');
+  toggleEl.innerHTML = `<button data-val="all" onclick="setAssetTypeFilter('all')" class="${assetTypeFilter==='all'?'active':''}">All Types</button>` +
+    typesPresent.map(t=>`<button data-val="${t}" onclick="setAssetTypeFilter('${t}')" class="${assetTypeFilter===t?'active':''}">${ASSET_TYPE_LABELS[t]||t}</button>`).join('');
+
+  const totalCurrentAll = metrics.reduce((s,m)=>s+m.currentValue,0);
+
+  const statsEl = document.getElementById('assettype-stats');
+  if (assetTypeFilter==='all'){
+    const totalInvested = metrics.reduce((s,m)=>s+m.invested,0);
+    const totalGain = metrics.reduce((s,m)=>s+m.gain,0);
+    const totalGainPct = totalInvested>0 ? (totalGain/totalInvested*100) : null;
+    statsEl.innerHTML = `
+      <div class="card"><div class="card-title">Asset Types</div><div class="stat-value">${metrics.length}</div><div class="stat-sub">${holdings.length} holding(s) total</div></div>
+      <div class="card"><div class="card-title">Total Invested</div><div class="stat-value">${fmtMoney(totalInvested)}</div><div class="stat-sub">Across all types</div></div>
+      <div class="card"><div class="card-title">Current Value</div><div class="stat-value">${fmtMoney(totalCurrentAll)}</div><div class="stat-sub">Across all types</div></div>
+      <div class="card"><div class="card-title">Gain</div><div class="stat-value ${totalGain>=0?'pos':'neg'}">${totalGain>=0?'+':''}${fmtMoney(totalGain)}</div><div class="stat-sub ${totalGainPct>=0?'pos':'neg'}">${totalGainPct!==null?(totalGainPct>=0?'+':'')+fmtPct(totalGainPct):'—'}</div></div>
+    `;
+  } else {
+    const m = metrics.find(x=>x.type===assetTypeFilter);
+    const pctOfPortfolio = (totalCurrentAll>0 && m) ? (m.currentValue/totalCurrentAll*100) : null;
+    statsEl.innerHTML = m ? `
+      <div class="card"><div class="card-title">${ASSET_TYPE_LABELS[m.type]||m.type}</div><div class="stat-value">${m.count}</div><div class="stat-sub">holding(s)</div></div>
+      <div class="card"><div class="card-title">Invested</div><div class="stat-value">${fmtMoney(m.invested)}</div><div class="stat-sub">${pctOfPortfolio!==null?fmtPct(pctOfPortfolio,1)+' of portfolio by value':''}</div></div>
+      <div class="card"><div class="card-title">Current Value</div><div class="stat-value">${fmtMoney(m.currentValue)}</div><div class="stat-sub">As of today</div></div>
+      <div class="card"><div class="card-title">Gain</div><div class="stat-value ${m.gain>=0?'pos':'neg'}">${m.gain>=0?'+':''}${fmtMoney(m.gain)}</div><div class="stat-sub ${(m.xirr||0)>=0?'pos':'neg'}">XIRR: ${m.xirr!==null?fmtPct(m.xirr):'—'}</div></div>
+    ` : emptyState('No holdings of this type', 'Add a transaction for this asset type to see it here.');
+  }
+
+  // Charts drill down IN PLACE using the same assetTypeFilter as the rest of the page:
+  // at "All Types" they show one slice/bar per asset type; once a type is selected they
+  // switch to showing one slice/bar per asset within that type; clicking further at that
+  // level drills straight into that asset's transactions.
+  const allocColors = ['#38bdf8','#2dd4bf','#a78bfa','#fbbf24','#c08e91','#d97706','#16a34a','#f97316','#ec4899','#94a3b8','#818cf8','#f472b6','#4ade80'];
+  const chartLevel = assetTypeFilter==='all' ? 'type' : 'asset';
+  const assetLevelHoldings = chartLevel==='asset' ? holdings.filter(h=>h.asset.type===assetTypeFilter).sort((a,b)=>b.currentValue-a.currentValue) : [];
+
+  const allocTitleEl = document.getElementById('chart-assettype-allocation-title');
+  const barTitleEl = document.getElementById('chart-assettype-bar-title');
+  if (chartLevel==='type'){
+    allocTitleEl.innerHTML = `Current Value by Type <span style="font-weight:400; color:var(--text-faint); text-transform:none;">— click a slice to drill in</span>`;
+    barTitleEl.innerHTML = `Invested vs Current Value by Type <span style="font-weight:400; color:var(--text-faint); text-transform:none;">— click a bar to drill in</span>`;
+  } else {
+    const typeLabel = ASSET_TYPE_LABELS[assetTypeFilter]||assetTypeFilter;
+    allocTitleEl.innerHTML = `Current Value within ${typeLabel} <span style="font-weight:400; color:var(--text-faint); text-transform:none;">— click a slice for its transactions, or <a onclick="setAssetTypeFilter('all')" style="cursor:pointer; color:var(--accent-2);">back to all types</a></span>`;
+    barTitleEl.innerHTML = `Invested vs Current Value within ${typeLabel} <span style="font-weight:400; color:var(--text-faint); text-transform:none;">— click a bar for its transactions, or <a onclick="setAssetTypeFilter('all')" style="cursor:pointer; color:var(--accent-2);">back to all types</a></span>`;
+  }
+
+  const allocCtx = document.getElementById('chart-assettype-allocation').getContext('2d');
+  if (assetTypeAllocationChart) assetTypeAllocationChart.destroy();
+  const allocLabels = chartLevel==='type' ? metrics.map(m=>ASSET_TYPE_LABELS[m.type]||m.type) : assetLevelHoldings.map(h=>h.asset.name);
+  const allocValues = chartLevel==='type' ? metrics.map(m=>Math.max(m.currentValue,0)) : assetLevelHoldings.map(h=>Math.max(h.currentValue,0));
+  if (allocLabels.length===0){ assetTypeAllocationChart=null; allocCtx.clearRect(0,0,500,500); }
+  else{
+    assetTypeAllocationChart = new Chart(allocCtx, {
+      type:'doughnut',
+      data:{ labels: allocLabels, datasets:[{ data: allocValues, backgroundColor: allocLabels.map((l,i)=>allocColors[i%allocColors.length]), borderWidth:0 }]},
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        onClick:(evt, elements, chart)=>{
+          const points = chart.getElementsAtEventForMode(evt, 'nearest', {intersect:true}, true);
+          if (!points.length) return;
+          if (chartLevel==='type') setAssetTypeFilter(metrics[points[0].index].type);
+          else drillIntoAsset(assetLevelHoldings[points[0].index].asset.id);
+        },
+        plugins:{legend:{position:'bottom', labels:{color:'#9aa7c7', boxWidth:11, padding:10, font:{size:10.5}}}}, cutout:'62%'
+      }
+    });
+    allocCtx.canvas.style.cursor = 'pointer';
+  }
+
+  const barCtx = document.getElementById('chart-assettype-bar').getContext('2d');
+  if (assetTypeBarChart) assetTypeBarChart.destroy();
+  const barLabels = chartLevel==='type' ? metrics.map(m=>ASSET_TYPE_LABELS[m.type]||m.type) : assetLevelHoldings.map(h=>h.asset.name);
+  const barInvested = chartLevel==='type' ? metrics.map(m=>m.invested) : assetLevelHoldings.map(h=>h.invested);
+  const barCurrent = chartLevel==='type' ? metrics.map(m=>m.currentValue) : assetLevelHoldings.map(h=>h.currentValue);
+  if (barLabels.length===0){ assetTypeBarChart=null; barCtx.clearRect(0,0,500,500); }
+  else{
+    assetTypeBarChart = new Chart(barCtx, {
+      type:'bar',
+      data:{
+        labels: barLabels,
+        datasets:[
+          { label:'Invested', data: barInvested, backgroundColor:'#38bdf8', borderRadius:4 },
+          { label:'Current Value', data: barCurrent, backgroundColor:'#2dd4bf', borderRadius:4 }
+        ]
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        onClick:(evt, elements, chart)=>{
+          const points = chart.getElementsAtEventForMode(evt, 'nearest', {intersect:false, axis:'x'}, true);
+          if (!points.length) return;
+          if (chartLevel==='type') setAssetTypeFilter(metrics[points[0].index].type);
+          else drillIntoAsset(assetLevelHoldings[points[0].index].asset.id);
+        },
+        plugins:{legend:{position:'bottom', labels:{color:'#9aa7c7', boxWidth:12, padding:12}}},
+        scales:{
+          y:{ticks:{color:'#6b7699', callback:v=>'₹'+v.toLocaleString('en-IN')}, grid:{color:'#1f2c4d'}},
+          x:{ticks:{color:'#6b7699', font:{size:10}}, grid:{display:false}}
+        }
+      }
+    });
+    barCtx.canvas.style.cursor = 'pointer';
+  }
+
+  const summaryEl = document.getElementById('assettype-summary-table');
+  if (metrics.length===0){ summaryEl.innerHTML = emptyState('No holdings yet', 'Add assets and transactions to see type-wise metrics.'); }
+  else{
+    summaryEl.innerHTML = `<table><thead><tr><th>Type</th><th>Count</th><th>Invested</th><th>Current Value</th><th>Gain</th><th>XIRR</th><th>% of Portfolio</th></tr></thead><tbody>
+      ${metrics.map(m=>{
+        const pct = totalCurrentAll>0 ? (m.currentValue/totalCurrentAll*100) : null;
+        return `<tr style="cursor:pointer;" onclick="setAssetTypeFilter('${m.type}')">
+          <td><span class="badge ${ASSET_TYPE_BADGE[m.type]}">${ASSET_TYPE_LABELS[m.type]||m.type}</span></td>
+          <td>${m.count}</td>
+          <td>${fmtMoney(m.invested)}</td>
+          <td>${fmtMoney(m.currentValue)}</td>
+          <td class="${m.gain>=0?'pos':'neg'}">${m.gain>=0?'+':''}${fmtMoney(m.gain)}</td>
+          <td class="${(m.xirr||0)>=0?'pos':'neg'}">${m.xirr!==null?fmtPct(m.xirr):'—'}</td>
+          <td>${pct!==null?fmtPct(pct,1):'—'}</td>
+        </tr>`;
+      }).join('')}
+    </tbody></table>`;
+  }
+  applyStoredFilter('assettype-summary-table');
+
+  const holdingsTitleEl = document.getElementById('assettype-holdings-title');
+  const filteredHoldings = assetTypeFilter==='all' ? holdings : holdings.filter(h=>h.asset.type===assetTypeFilter);
+  holdingsTitleEl.innerHTML = (assetTypeFilter==='all' ? 'All holdings' : `${ASSET_TYPE_LABELS[assetTypeFilter]||assetTypeFilter} holdings`) + ' <span style="font-weight:400; color:var(--text-faint); font-size:12px;">— click a row to see its transactions</span>';
+  const holdingsEl = document.getElementById('assettype-holdings-table');
+  if (filteredHoldings.length===0){ holdingsEl.innerHTML = emptyState('No holdings', 'Nothing to show for this filter.'); }
+  else{
+    holdingsEl.innerHTML = `<table><thead><tr><th>Asset</th><th>Account</th><th>Units</th><th>Invested</th><th>Current Value</th><th>Gain</th><th>XIRR</th></tr></thead><tbody>
+      ${filteredHoldings.map(h=>{
+        const hx = xirr(h.cashflows);
+        return `<tr style="cursor:pointer;" onclick="drillIntoAsset('${h.asset.id}')">
+          <td>${h.asset.name}</td>
+          <td>${accountTag(h.asset.accountId)}</td>
+          <td>${UNIT_LESS_TYPES.includes(h.asset.type)?'—':fmtNum(h.units,3)}</td>
+          <td>${fmtMoney(h.invested)}</td>
+          <td>${fmtMoney(h.currentValue)}</td>
+          <td class="${h.gain>=0?'pos':'neg'}">${h.gain>=0?'+':''}${fmtMoney(h.gain)}</td>
+          <td class="${(hx||0)>=0?'pos':'neg'}">${hx!==null?fmtPct(hx):'—'}</td>
+        </tr>`;
+      }).join('')}
+    </tbody></table>`;
+  }
+  applyStoredFilter('assettype-holdings-table');
+
+  // asset-level drill-down: related transactions for the selected asset
+  const drilldownSection = document.getElementById('assettype-drilldown-section');
+  if (!drilldownAsset){
+    drilldownSection.style.display = 'none';
+  } else {
+    drilldownSection.style.display = 'block';
+    document.getElementById('assettype-drilldown-title').innerHTML =
+      `Transactions for ${drilldownAsset.name} <button class="btn btn-sm btn-ghost" onclick="clearAssetDrilldown()" style="margin-left:8px;">✕ Close</button>`;
+    const assetTxns = state.transactions.filter(t=>t.assetId===assetTypeDrilldownAssetId).sort((a,b)=>new Date(b.date)-new Date(a.date));
+    document.getElementById('assettype-drilldown-table').innerHTML = renderTxnTable(assetTxns, true);
+    applyStoredFilter('assettype-drilldown-table');
+  }
 }
 
 function onAssetTypeChange(){
@@ -2307,6 +2632,11 @@ function computeRealizedGainsFIFO(assets, startDate, endDate){
       } else if (t.type==='dividend_reinvest'){
         const costPerUnit = u>0 ? (amtDisp||0)/u : 0;
         lots.push({date:t.date, units:u, costPerUnit});
+      } else if (t.type==='bonus'){
+        lots.push({date:t.date, units:u, costPerUnit:0}); // free units — zero cost basis
+      } else if (t.type==='split'){
+        const ratio = t.splitRatio || 1;
+        lots.forEach(l=>{ l.units *= ratio; l.costPerUnit /= ratio; }); // total cost basis per lot unchanged
       } else if (WITHDRAW_TXN_TYPES.includes(t.type)){
         let unitsToSell = u;
         if (t.type==='maturity') unitsToSell = lots.reduce((s,l)=>s+l.units,0);
@@ -3070,6 +3400,7 @@ function loadSampleData(){
   state.transactions.push({id:uid('txn'), assetId:a4.id, type:'buy', date:m(14), amount:150000, units:60, navPrice:2500, rate:null, tenure:null});
   state.transactions.push({id:uid('txn'), assetId:a4.id, type:'dividend', date:m(6), amount:900, units:null, navPrice:null, rate:null, tenure:null});
   state.transactions.push({id:uid('txn'), assetId:a4.id, type:'dividend', date:m(1), amount:1100, units:null, navPrice:null, rate:null, tenure:null});
+  state.transactions.push({id:uid('txn'), assetId:a4.id, type:'bonus', date:m(3), amount:0, units:60, navPrice:null, rate:null, tenure:null});
   state.transactions.push({id:uid('txn'), assetId:a5.id, type:'deposit', date:m(12), amount:100000, units:null, navPrice:null, rate:7.1, tenure:36});
   state.transactions.push({id:uid('txn'), assetId:a6.id, type:'buy', date:m(11), amount:101200, units:100, navPrice:1012, rate:null, tenure:null});
   state.transactions.push({id:uid('txn'), assetId:a6.id, type:'interest_credit', date:m(5), amount:4625, units:null, navPrice:null, rate:null, tenure:null});
@@ -3082,6 +3413,7 @@ function loadSampleData(){
   // US stock: priced and transacted in USD, converted automatically for the dashboard
   state.transactions.push({id:uid('txn'), assetId:a9.id, type:'buy', date:m(16), amount:2000, units:2000/180, navPrice:180, rate:null, tenure:null});
   state.transactions.push({id:uid('txn'), assetId:a9.id, type:'buy', date:m(7), amount:1500, units:1500/195, navPrice:195, rate:null, tenure:null});
+  state.transactions.push({id:uid('txn'), assetId:a9.id, type:'split', date:m(5), splitRatio:4, amount:0, units:null, navPrice:null, rate:null, tenure:null});
   state.transactions.push({id:uid('txn'), assetId:a9.id, type:'dividend', date:m(3), amount:12, units:null, navPrice:null, rate:null, tenure:null});
 
   // PPF: yearly contributions + annual interest credit (compounds annually)
@@ -3138,7 +3470,7 @@ function loadSampleData(){
     linkedAssetIds:[a7.id], manualValue:250000
   });
 
-  showToast('Sample data loaded — now includes Gold, US Stock, PPF, SSY, RD, NPS (Tier 1 & 2), a Chit Fund and ELSS');
+  showToast('Sample data loaded — now includes Gold, US Stock, PPF, SSY, RD, NPS (Tier 1 & 2), a Chit Fund, ELSS, a bonus issue and a stock split');
   renderAll();
 }
 document.getElementById('btn-sample-data').addEventListener('click', loadSampleData);
@@ -3760,6 +4092,7 @@ function renderAll(){
   renderDashboard();
   renderTransactionsPage();
   renderAssetsPage();
+  renderAssetTypesPage();
   renderAccountsPage();
   renderGoalsPage();
   renderIncomePage();
