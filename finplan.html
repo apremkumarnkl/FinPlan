@@ -4444,12 +4444,25 @@ renderAll();
 if (restoredFromLocalStorage) showToast('Restored your data from this browser');
 handleGdriveOAuthRedirect(); // catches ?code=... if we were just redirected back from Google
 if (isGdrivePersistentMode()){
-  // persistent (Worker-backed) mode doesn't need Google's own session at all — just refresh directly
-  ensureGdriveAccessToken().then(ok=>{ updateGDriveUI(ok); renderAutoBackupUI(); if (ok) startGdriveKeepAlive(); });
+  // Persistent (Worker-backed) mode doesn't need Google's own browser session at all — just
+  // refresh directly using the refresh_token restored from this browser's storage. One retry
+  // after a short delay tolerates a transient network hiccup right as the app opens, since this
+  // now runs unattended every single time with no user watching for an error toast.
+  ensureGdriveAccessToken().then(ok=>{
+    updateGDriveUI(ok); renderGdrivePersistUI(); renderAutoBackupUI();
+    if (ok) startGdriveKeepAlive();
+    else setTimeout(()=>{
+      ensureGdriveAccessToken().then(ok2=>{
+        updateGDriveUI(ok2); renderGdrivePersistUI(); renderAutoBackupUI();
+        if (ok2) startGdriveKeepAlive();
+      });
+    }, 4000);
+  });
 } else {
   attemptGdriveAutoReconnect(30);
 }
 </script>
+
 
 </body>
 </html>
