@@ -167,6 +167,10 @@ thead th{
   font-weight:600; font-size:11.5px; text-transform:uppercase; letter-spacing:.4px;
   border-bottom:1px solid var(--card-border); white-space:nowrap;
 }
+thead th[data-colidx]{cursor:pointer; user-select:none;}
+thead th[data-colidx]:hover{color:var(--accent);}
+.sort-indicator{font-size:9px; color:var(--text-faint); margin-left:3px;}
+thead th[data-colidx]:hover .sort-indicator{color:var(--accent);}
 tbody td{padding:11px 14px; border-bottom:1px solid var(--card-border); white-space:nowrap;}
 tbody tr:last-child td{border-bottom:none;}
 tbody tr:hover{background:rgba(255,255,255,.02);}
@@ -196,6 +200,38 @@ tbody tr:hover{background:rgba(255,255,255,.02);}
 }
 .table-filter-input:focus{outline:none; border-color:var(--accent);}
 .table-filter-count{font-size:11.5px; color:var(--text-faint); white-space:nowrap;}
+
+/* ---------- Searchable dropdown (Select2-style combobox) ---------- */
+.searchable-select{position:relative;}
+.searchable-select-trigger{
+  width:100%; text-align:left; padding:9px 34px 9px 11px; border-radius:9px; border:1px solid var(--card-border);
+  background:var(--bg-soft); color:var(--text); font-size:13.5px; font-family:inherit; cursor:pointer;
+  position:relative; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.searchable-select-trigger::after{
+  content:'▾'; color:var(--text-faint); position:absolute; right:11px; top:50%; transform:translateY(-50%);
+}
+.searchable-select-trigger:hover, .searchable-select-trigger:focus{outline:none; border-color:var(--accent);}
+.searchable-select-panel{
+  position:absolute; top:calc(100% + 4px); left:0; right:0; z-index:60;
+  background:var(--panel); border:1px solid var(--card-border); border-radius:10px;
+  box-shadow:0 14px 34px rgba(0,0,0,.45); overflow:hidden;
+}
+.searchable-select-panel input{
+  width:100%; padding:10px 12px; border:none; border-bottom:1px solid var(--card-border);
+  background:var(--bg-soft); color:var(--text); font-size:13px; box-sizing:border-box; font-family:inherit;
+}
+.searchable-select-panel input:focus{outline:none;}
+.searchable-select-options{max-height:230px; overflow-y:auto;}
+.searchable-select-option{
+  padding:9px 12px; cursor:pointer; font-size:13px; display:flex; justify-content:space-between;
+  gap:10px; align-items:center; white-space:nowrap;
+}
+.searchable-select-option:hover{background:rgba(255,255,255,.06);}
+.searchable-select-option.selected{background:var(--accent-soft); color:var(--accent); font-weight:600;}
+.searchable-select-option .opt-name{overflow:hidden; text-overflow:ellipsis;}
+.searchable-select-option .opt-meta{color:var(--text-faint); font-size:11px; white-space:nowrap; flex-shrink:0;}
+.searchable-select-empty{padding:16px; text-align:center; color:var(--text-faint); font-size:12.5px;}
 .table-pagesize-select{
   padding:8px 10px; border-radius:9px; border:1px solid var(--card-border);
   background:var(--bg-soft); color:var(--text); font-size:12.5px; flex-shrink:0;
@@ -758,6 +794,23 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
         </div>
       </div>
 
+      <div class="section-title" style="margin-top:20px; font-size:14px;">3. Optional: truly persistent connection (advanced)</div>
+      <div class="warn-box">⚠ The "Connect &amp; backup" above already keeps itself signed in <em>while this tab is open</em>, and reconnects on reopening if your browser still has an active Google session. But browser-only sign-in fundamentally cannot survive things like a fully closed app, a cleared browser session, or Google's own session policies — there's no way around that without a small backend. This section adds one: a free Cloudflare Worker you deploy yourself that holds your OAuth Client Secret (never your data) and refreshes your connection server-side, so it survives all of that. It's optional — everything above works fine without it.</div>
+      <div class="card">
+        <div class="card-title">Set up once, stays connected indefinitely*</div>
+        <p style="color:var(--text-dim); font-size:12.5px;">Deploy the Worker script from your download package (<code>gdrive-token-proxy-worker.js</code>) to <a href="https://dash.cloudflare.com/" target="_blank" rel="noopener">Cloudflare Workers</a> (free tier) — the file has full step-by-step setup comments at the top. Then paste its URL below and click Enable.</p>
+        <div class="field" style="margin-top:8px;">
+          <label>Token Proxy URL</label>
+          <input type="text" id="gdrive-proxy-url" oninput="saveGdriveProxyUrl()" placeholder="https://your-worker-name.your-subdomain.workers.dev">
+        </div>
+        <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:10px;">
+          <button class="btn btn-primary" id="btn-gdrive-persist-enable" onclick="enableGdrivePersistence()">Enable persistent connection</button>
+          <button class="btn btn-danger" id="btn-gdrive-persist-revoke" onclick="revokeGdrivePersistence()" style="display:none;">Revoke persistent connection</button>
+        </div>
+        <div class="fx-hint" id="gdrive-persist-status" style="margin-top:8px;">Not enabled — using the session-only connection above.</div>
+        <div class="field-hint" style="margin-top:8px;">*How long the connection actually lasts is set by Google, not FinPlan: while your Google Cloud OAuth consent screen is in "Testing" status, Google expires these tokens after about 7 days, requiring one re-click of "Enable" — switch the consent screen to "In production" in Google Cloud Console (no formal app review needed for personal use with this scope) for it to stop expiring altogether.</div>
+      </div>
+
       <div class="section-title" style="margin-top:24px;">Auto backup</div>
       <div class="warn-box">⚠ Auto-backup only runs while this tab stays open — it can't run in the background after you close it.</div>
       <div class="grid grid-4">
@@ -834,9 +887,16 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
     </div>
     <input type="hidden" id="txn-id">
     <div class="form-grid">
-      <div class="field">
+      <div class="field" style="position:relative;">
         <label>Asset</label>
-        <select id="txn-asset" onchange="onTxnAssetChange()"></select>
+        <div class="searchable-select" id="txn-asset-combo">
+          <button type="button" class="searchable-select-trigger" id="txn-asset-trigger" onclick="toggleAssetDropdown()">Select asset…</button>
+          <div class="searchable-select-panel" id="txn-asset-panel" style="display:none;">
+            <input type="text" id="txn-asset-search" oninput="renderAssetDropdownOptions()" placeholder="🔍 Search assets…">
+            <div class="searchable-select-options" id="txn-asset-options"></div>
+          </div>
+        </div>
+        <select id="txn-asset" onchange="onTxnAssetChange()" style="display:none;"></select>
       </div>
       <div class="field">
         <label>Transaction type</label>
@@ -1107,6 +1167,8 @@ function ensureSettings(){
   if (state.settings.autoSaveLocalStorage === undefined) state.settings.autoSaveLocalStorage = true;
   if (state.settings.gdriveClientId === undefined) state.settings.gdriveClientId = '';
   if (state.settings.gdriveWasConnected === undefined) state.settings.gdriveWasConnected = false;
+  if (state.settings.gdriveProxyUrl === undefined) state.settings.gdriveProxyUrl = '';
+  if (state.settings.gdriveRefreshToken === undefined) state.settings.gdriveRefreshToken = '';
 }
 function ensureAutoBackupSettings(){
   ensureSettings();
@@ -1210,9 +1272,9 @@ const MF_TXN_TYPES = [
 const STOCK_TXN_TYPES = [['buy','Buy'], ['sell','Sell'], ['dividend','Dividend'], ['bonus','Bonus Shares'], ['split','Stock Split']];
 const GOLD_TXN_TYPES = [['buy','Purchase'], ['sell','Sell']];
 const BOND_TXN_TYPES = [['buy','Purchase'], ['interest_credit','Interest (Coupon)'], ['sell','Sell'], ['maturity','Maturity']];
-const FD_TXN_TYPES = [['deposit','Deposit Opened'], ['interest_credit','Interest Credit'], ['maturity','Maturity']];
+const FD_TXN_TYPES = [['deposit','Deposit Opened'], ['interest_credit','Interest Credit'], ['premature_close','Redemption / Premature Close'], ['maturity','Maturity']];
 const PPF_SSY_TXN_TYPES = [['deposit','Deposit / Contribution'], ['interest_credit','Interest Credit (usually automatic)'], ['withdrawal','Partial Withdrawal'], ['maturity','Maturity / Closure']];
-const RD_TXN_TYPES = [['deposit','Monthly Deposit'], ['interest_credit','Interest Credit'], ['maturity','Maturity']];
+const RD_TXN_TYPES = [['deposit','Monthly Deposit'], ['interest_credit','Interest Credit'], ['premature_close','Redemption / Premature Close'], ['maturity','Maturity']];
 const NPS_TXN_TYPES = [['buy','Contribution'], ['sip','Monthly Contribution'], ['redeem','Withdrawal'], ['maturity','Maturity / Retirement Withdrawal']];
 const CHIT_TXN_TYPES = [['installment','Monthly Installment'], ['dividend','Dividend / Discount Received'], ['prize_money','Prize Money Received'], ['maturity','Chit Completed / Closed']];
 
@@ -1420,7 +1482,7 @@ function computeHoldings(assetsOverride, asOfDate){
         } else if (t.type==='withdrawal'){
           withdrawnTotal += t.amount;
           cashflows.push({date:t.date, amount:t.amount});
-        } else if (t.type==='maturity'){
+        } else if (t.type==='maturity' || t.type==='premature_close'){
           matured = true; maturityDate = t.date;
           cashflows.push({date:t.date, amount:t.amount});
         }
@@ -1623,19 +1685,19 @@ function renderDashboard(){
     holdEl.innerHTML = emptyState('No holdings yet', 'Add an asset and a transaction, or load sample data, to see your dashboard come alive.');
   } else {
     holdEl.innerHTML = `<table><thead><tr>
-      <th>Asset</th><th>Type</th><th>Units</th><th>Invested</th><th>Current Value</th><th>Gain</th><th>XIRR</th>
+      ${sTh('holdings-table',0,'Asset')}${sTh('holdings-table',1,'Type')}${sTh('holdings-table',2,'Units')}${sTh('holdings-table',3,'Invested')}${sTh('holdings-table',4,'Current Value')}${sTh('holdings-table',5,'Gain')}${sTh('holdings-table',6,'XIRR')}
     </tr></thead><tbody>
       ${holdings.map(h=>{
         const hx = xirr(h.cashflows);
         const showNative = h.nativeCurrency !== getDisplayCurrency();
         return `<tr>
-          <td data-label="Asset">${h.asset.name}</td>
-          <td data-label="Type"><span class="badge ${ASSET_TYPE_BADGE[h.asset.type]}">${assetTypeLabel(h.asset)}</span></td>
-          <td data-label="Units">${UNIT_LESS_TYPES.includes(h.asset.type) ? '—' : fmtNum(h.units,3)}</td>
-          <td data-label="Invested"><span class="cell-value">${fmtMoney(h.invested)}${showNative?`<span class="native-amt">${fmtMoney(h.nativeInvested, h.nativeCurrency)}</span>`:''}</span></td>
-          <td data-label="Current Value"><span class="cell-value">${fmtMoney(h.currentValue)}${showNative?`<span class="native-amt">${fmtMoney(h.nativeCurrentValue, h.nativeCurrency)}</span>`:''}</span></td>
-          <td data-label="Gain" class="${h.gain>=0?'pos':'neg'}">${h.gain>=0?'+':''}${fmtMoney(h.gain)}</td>
-          <td data-label="XIRR" class="${hx>=0?'pos':'neg'}">${hx!==null?fmtPct(hx):'—'}</td>
+          <td data-label="Asset" data-sort="${h.asset.name.toLowerCase()}">${h.asset.name}</td>
+          <td data-label="Type" data-sort="${assetTypeLabel(h.asset)}"><span class="badge ${ASSET_TYPE_BADGE[h.asset.type]}">${assetTypeLabel(h.asset)}</span></td>
+          <td data-label="Units" data-sort="${UNIT_LESS_TYPES.includes(h.asset.type) ? -1 : h.units}">${UNIT_LESS_TYPES.includes(h.asset.type) ? '—' : fmtNum(h.units,3)}</td>
+          <td data-label="Invested" data-sort="${h.invested}"><span class="cell-value">${fmtMoney(h.invested)}${showNative?`<span class="native-amt">${fmtMoney(h.nativeInvested, h.nativeCurrency)}</span>`:''}</span></td>
+          <td data-label="Current Value" data-sort="${h.currentValue}"><span class="cell-value">${fmtMoney(h.currentValue)}${showNative?`<span class="native-amt">${fmtMoney(h.nativeCurrentValue, h.nativeCurrency)}</span>`:''}</span></td>
+          <td data-label="Gain" data-sort="${h.gain}" class="${h.gain>=0?'pos':'neg'}">${h.gain>=0?'+':''}${fmtMoney(h.gain)}</td>
+          <td data-label="XIRR" data-sort="${hx!==null?hx:-99999}" class="${hx>=0?'pos':'neg'}">${hx!==null?fmtPct(hx):'—'}</td>
         </tr>`;
       }).join('')}
     </tbody></table>`;
@@ -1665,7 +1727,7 @@ function renderDashboard(){
   // recent transactions
   const filteredAssetIds = new Set(getFilteredAssets().map(a=>a.id));
   const recent = [...state.transactions].filter(t=>filteredAssetIds.has(t.assetId)).sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,8);
-  document.getElementById('recent-txns').innerHTML = renderTxnTable(recent, false);
+  document.getElementById('recent-txns').innerHTML = renderTxnTable(recent, false, 'recent-txns');
 
   applyStoredFilter('holdings-table');
   applyStoredFilter('recent-txns');
@@ -1709,7 +1771,9 @@ function applyTableFilterAndPagination(tableWrapId){
   const wrap = document.getElementById(tableWrapId);
   if (!wrap) return;
   const q = (tableFilterQueries[tableWrapId]||'').trim().toLowerCase();
-  const rows = Array.from(wrap.querySelectorAll('tbody tr'));
+  const allRows = Array.from(wrap.querySelectorAll('tbody tr'));
+  const summaryRows = allRows.filter(row=>row.classList.contains('summary-row'));
+  const rows = allRows.filter(row=>!row.classList.contains('summary-row'));
   const matched = q ? rows.filter(row=>row.innerText.toLowerCase().includes(q)) : rows;
   const ps = getTablePageState(tableWrapId);
   const totalPages = Math.max(Math.ceil(matched.length / ps.pageSize) || 1, 1);
@@ -1721,6 +1785,7 @@ function applyTableFilterAndPagination(tableWrapId){
   const pageRowSet = new Set(pageRows);
 
   rows.forEach(row=>{ row.style.display = pageRowSet.has(row) ? '' : 'none'; });
+  summaryRows.forEach(row=>{ row.style.display = ''; }); // Total row(s) always shown, never sorted/paginated away
 
   const countEl = document.getElementById(tableWrapId+'-filter-count');
   if (countEl){
@@ -1742,8 +1807,9 @@ function applyTableFilterAndPagination(tableWrapId){
   }
 }
 // Call at the end of any render function right after a filterable table's innerHTML is set,
-// so an active search query + page survives the table being redrawn.
+// so an active search query + page + sort survives the table being redrawn.
 function applyStoredFilter(tableWrapId){
+  applyStoredSort(tableWrapId);
   applyTableFilterAndPagination(tableWrapId);
 }
 function clearTableFilter(tableWrapId){
@@ -1752,6 +1818,75 @@ function clearTableFilter(tableWrapId){
   const input = document.getElementById(tableWrapId+'-search');
   if (input) input.value = '';
   applyTableFilterAndPagination(tableWrapId);
+}
+
+/* ==========================================================================
+   GENERIC TABLE SORTING — click any sortable column header to sort by it;
+   click again to reverse direction. Works by reordering the already-rendered
+   <tr> elements in the DOM (using each cell's data-sort attribute for correct
+   numeric/date ordering, falling back to its visible text), so it plugs into
+   the same tables as the filter/pagination engine without touching each
+   render function's own data-building logic. Sort state is remembered per
+   table and reapplied after every redraw via applyStoredFilter, same as the
+   filter query and current page.
+   ========================================================================== */
+let tableSortState = {}; // tableWrapId -> {colIndex, direction:'asc'|'desc'}
+
+function sortTableByColumn(tableWrapId, colIndex){
+  const st = tableSortState[tableWrapId];
+  if (st && st.colIndex===colIndex){
+    st.direction = st.direction==='asc' ? 'desc' : 'asc';
+  } else {
+    tableSortState[tableWrapId] = { colIndex, direction:'asc' };
+  }
+  getTablePageState(tableWrapId).page = 1; // resorting starts back at page 1
+  applyStoredSort(tableWrapId);
+  applyTableFilterAndPagination(tableWrapId);
+}
+
+function applyStoredSort(tableWrapId){
+  const wrap = document.getElementById(tableWrapId);
+  if (!wrap) return;
+  const tbody = wrap.querySelector('tbody');
+  updateSortHeaderIndicators(tableWrapId);
+  const st = tableSortState[tableWrapId];
+  if (!tbody || !st) return;
+  const allRows = Array.from(tbody.querySelectorAll('tr'));
+  const summaryRows = allRows.filter(r=>r.classList.contains('summary-row'));
+  const rows = allRows.filter(r=>!r.classList.contains('summary-row'));
+  const dir = st.direction==='asc' ? 1 : -1;
+  const getVal = (row)=>{
+    const cell = row.children[st.colIndex];
+    if (!cell) return '';
+    return cell.dataset.sort !== undefined ? cell.dataset.sort : cell.textContent.trim();
+  };
+  rows.sort((a,b)=>{
+    const rawA = getVal(a), rawB = getVal(b);
+    const numA = parseFloat(rawA), numB = parseFloat(rawB);
+    const bothNumeric = rawA!=='' && rawB!=='' && !isNaN(numA) && !isNaN(numB);
+    if (bothNumeric) return (numA-numB)*dir;
+    return String(rawA).localeCompare(String(rawB)) * dir;
+  });
+  rows.forEach(r=>tbody.appendChild(r));
+  summaryRows.forEach(r=>tbody.appendChild(r)); // Total row(s) always pinned to the bottom
+}
+
+function updateSortHeaderIndicators(tableWrapId){
+  const wrap = document.getElementById(tableWrapId);
+  if (!wrap) return;
+  const st = tableSortState[tableWrapId];
+  wrap.querySelectorAll('thead th[data-colidx]').forEach(th=>{
+    const idx = parseInt(th.dataset.colidx, 10);
+    const indicator = th.querySelector('.sort-indicator');
+    if (!indicator) return;
+    indicator.textContent = (st && st.colIndex===idx) ? (st.direction==='asc' ? '▲' : '▼') : '⇅';
+  });
+}
+
+// Builds a sortable <th> — used by every render function so all tables get consistent,
+// clickable headers wired into the sort engine above.
+function sTh(tableWrapId, colIndex, label){
+  return `<th onclick="sortTableByColumn('${tableWrapId}', ${colIndex})" data-colidx="${colIndex}">${label} <span class="sort-indicator">⇅</span></th>`;
 }
 
 /* ==========================================================================
@@ -1774,22 +1909,23 @@ function txnTypeLabel(assetType, type){
   return f? f[1] : type;
 }
 
-function renderTxnTable(txns, showActions=true){
+function renderTxnTable(txns, showActions=true, tableWrapId='txn-table'){
   if (txns.length===0) return emptyState('No transactions', 'Add your first transaction to get started.');
   return `<table><thead><tr>
-    <th>Date</th><th>Asset</th><th>Type</th><th>Amount</th><th>Units</th><th>NAV/Price</th>${showActions?'<th></th>':''}
+    ${sTh(tableWrapId,0,'Date')}${sTh(tableWrapId,1,'Asset')}${sTh(tableWrapId,2,'Type')}${sTh(tableWrapId,3,'Amount')}${sTh(tableWrapId,4,'Units')}${sTh(tableWrapId,5,'NAV/Price')}${showActions?'<th></th>':''}
   </tr></thead><tbody>
     ${txns.map(t=>{
       const a = getAsset(t.assetId);
       const cur = a ? (a.currency||'INR') : 'INR';
       const sym = CURRENCY_SYMBOLS[cur] || '₹';
+      const amountVal = (t.type==='bonus'||t.type==='split') ? 0 : t.amount;
       return `<tr>
-        <td>${fmtDate(t.date)}</td>
-        <td>${a?a.name:'—'}</td>
-        <td><span class="badge ${a?ASSET_TYPE_BADGE[a.type]:''}">${a?txnTypeLabel(a.type,t.type):t.type}</span></td>
-        <td>${t.type==='bonus'||t.type==='split' ? '—' : fmtMoney(t.amount, cur)}</td>
-        <td>${t.type==='split' ? `1 : ${fmtNum(t.splitRatio,2)}` : (t.units?fmtNum(t.units,3):'—')}</td>
-        <td>${t.navPrice?sym+fmtNum(t.navPrice,4):'—'}</td>
+        <td data-sort="${t.date}">${fmtDate(t.date)}</td>
+        <td data-sort="${a?a.name.toLowerCase():''}">${a?a.name:'—'}</td>
+        <td data-sort="${a?txnTypeLabel(a.type,t.type):t.type}"><span class="badge ${a?ASSET_TYPE_BADGE[a.type]:''}">${a?txnTypeLabel(a.type,t.type):t.type}</span></td>
+        <td data-sort="${amountVal}">${t.type==='bonus'||t.type==='split' ? '—' : fmtMoney(t.amount, cur)}</td>
+        <td data-sort="${t.units||0}">${t.type==='split' ? `1 : ${fmtNum(t.splitRatio,2)}` : (t.units?fmtNum(t.units,3):'—')}</td>
+        <td data-sort="${t.navPrice||0}">${t.navPrice?sym+fmtNum(t.navPrice,4):'—'}</td>
         ${showActions?`<td>
           <button class="icon-btn" onclick="editTxn('${t.id}')">✎</button>
           <button class="icon-btn" onclick="deleteTxn('${t.id}')">🗑</button>
@@ -1802,7 +1938,7 @@ function renderTxnTable(txns, showActions=true){
 function renderTransactionsPage(){
   const filteredAssetIds = new Set(getFilteredAssets().map(a=>a.id));
   const txns = [...state.transactions].filter(t=>filteredAssetIds.has(t.assetId)).sort((a,b)=>new Date(b.date)-new Date(a.date));
-  document.getElementById('all-txns-table').innerHTML = renderTxnTable(txns, true);
+  document.getElementById('all-txns-table').innerHTML = renderTxnTable(txns, true, 'all-txns-table');
   applyStoredFilter('all-txns-table');
 }
 
@@ -1816,9 +1952,86 @@ function populateAssetSelect(sel, includeEmpty=true){
     }).join('');
 }
 
+// Select2-style searchable dropdown for the "Add transaction" asset picker: a button shows
+// the current selection, clicking it opens a panel with a search box + filtered list. The
+// underlying (hidden) <select id="txn-asset"> stays the source of truth for .value, so every
+// other function that reads/writes it (saveTxn, onTxnAssetChange, openTxnModal) needs no changes.
+function getAssetDropdownList(){
+  return currentAccountFilter!=='all' ? state.assets.filter(a=>a.accountId===currentAccountFilter) : state.assets;
+}
+function assetOptionLabel(a){
+  const acc = getAccount(a.accountId);
+  const accLabel = (currentAccountFilter==='all' && acc) ? ` — ${acc.name}` : '';
+  return { name: a.name, meta: `${assetTypeLabel(a)}${accLabel}` };
+}
+function toggleAssetDropdown(open){
+  const panel = document.getElementById('txn-asset-panel');
+  const isOpen = panel.style.display === 'block';
+  const shouldOpen = open===undefined ? !isOpen : open;
+  panel.style.display = shouldOpen ? 'block' : 'none';
+  if (shouldOpen){
+    const searchInput = document.getElementById('txn-asset-search');
+    searchInput.value = '';
+    renderAssetDropdownOptions();
+    setTimeout(()=>searchInput.focus(), 0);
+  }
+}
+function renderAssetDropdownOptions(){
+  const query = document.getElementById('txn-asset-search').value.trim().toLowerCase();
+  const baseList = getAssetDropdownList();
+  const list = query ? baseList.filter(a=>{
+    const { name, meta } = assetOptionLabel(a);
+    return name.toLowerCase().includes(query) || meta.toLowerCase().includes(query);
+  }) : baseList;
+  const optionsEl = document.getElementById('txn-asset-options');
+  const currentVal = document.getElementById('txn-asset').value;
+  if (list.length===0){
+    optionsEl.innerHTML = `<div class="searchable-select-empty">No matching assets</div>`;
+    return;
+  }
+  optionsEl.innerHTML = list.map(a=>{
+    const { name, meta } = assetOptionLabel(a);
+    const selected = a.id===currentVal ? 'selected' : '';
+    return `<div class="searchable-select-option ${selected}" onclick="selectAssetOption('${a.id}')">
+      <span class="opt-name">${name}</span><span class="opt-meta">${meta}</span>
+    </div>`;
+  }).join('');
+}
+function selectAssetOption(assetId){
+  const sel = document.getElementById('txn-asset');
+  sel.value = assetId;
+  updateAssetTriggerLabel();
+  toggleAssetDropdown(false);
+  onTxnAssetChange();
+}
+function updateAssetTriggerLabel(){
+  const asset = getAsset(document.getElementById('txn-asset').value);
+  const trigger = document.getElementById('txn-asset-trigger');
+  if (asset){
+    const { name, meta } = assetOptionLabel(asset);
+    trigger.textContent = `${name} (${meta})`;
+  } else {
+    trigger.textContent = 'Select asset…';
+  }
+}
+// close the panel on outside click, Escape, or when the modal itself closes
+document.addEventListener('click', (e)=>{
+  const combo = document.getElementById('txn-asset-combo');
+  if (combo && !combo.contains(e.target)) toggleAssetDropdown(false);
+});
+document.addEventListener('keydown', (e)=>{
+  if (e.key === 'Escape') toggleAssetDropdown(false);
+  if (e.key === 'Enter' && document.activeElement && document.activeElement.id==='txn-asset-search'){
+    const firstOption = document.querySelector('#txn-asset-options .searchable-select-option');
+    if (firstOption) firstOption.click();
+    e.preventDefault();
+  }
+});
+
 function openTxnModal(existing){
   document.getElementById('txn-modal-title').textContent = existing ? 'Edit transaction' : 'Add transaction';
   document.getElementById('txn-id').value = existing ? existing.id : '';
+  toggleAssetDropdown(false);
   const assetSel = document.getElementById('txn-asset');
   populateAssetSelect(assetSel);
   const availableAssets = currentAccountFilter!=='all' ? state.assets.filter(a=>a.accountId===currentAccountFilter) : state.assets;
@@ -1827,6 +2040,7 @@ function openTxnModal(existing){
     return;
   }
   assetSel.value = existing ? existing.assetId : availableAssets[0].id;
+  updateAssetTriggerLabel();
   onTxnAssetChange(existing ? existing.type : null);
   document.getElementById('txn-date').value = existing ? existing.date : todayISO();
   document.getElementById('txn-amount').value = existing ? existing.amount : '';
@@ -2017,17 +2231,17 @@ function renderAccountsPage(){
     const holdings = computeHoldings(state.assets.filter(a=>a.accountId===acc.id));
     const value = holdings.reduce((s,h)=>s+h.currentValue,0);
     return `<tr>
-      <td>${accountTag(acc.id)}</td>
-      <td>${assetCount} asset(s)</td>
-      <td>${goalCount} goal(s)</td>
-      <td>${fmtMoney(value)}</td>
+      <td data-sort="${acc.name.toLowerCase()}">${accountTag(acc.id)}</td>
+      <td data-sort="${assetCount}">${assetCount} asset(s)</td>
+      <td data-sort="${goalCount}">${goalCount} goal(s)</td>
+      <td data-sort="${value}">${fmtMoney(value)}</td>
       <td>
         <button class="icon-btn" onclick="editAccount('${acc.id}')">✎</button>
         <button class="icon-btn" onclick="deleteAccount('${acc.id}')">🗑</button>
       </td>
     </tr>`;
   }).join('');
-  el.innerHTML = `<table><thead><tr><th>Account</th><th>Assets</th><th>Goals</th><th>Current Value</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+  el.innerHTML = `<table><thead><tr>${sTh('accounts-table',0,'Account')}${sTh('accounts-table',1,'Assets')}${sTh('accounts-table',2,'Goals')}${sTh('accounts-table',3,'Current Value')}<th></th></tr></thead><tbody>${rows}</tbody></table>`;
   applyStoredFilter('accounts-table');
 }
 
@@ -2078,7 +2292,7 @@ function renderAssetsPage(){
   const assets = getFilteredAssets();
   if (assets.length===0){ el.innerHTML = emptyState('No assets registered', 'Add mutual funds (including ELSS), stocks, bonds, gold, FDs, RDs, PPF, SSY, NPS or chit funds you want to track.'); return; }
   const holdingsAll = computeHoldings(assets);
-  el.innerHTML = `<table><thead><tr><th>Name</th><th>Account</th><th>Type</th><th>Current NAV/Price</th><th>Holding Value</th><th></th></tr></thead><tbody>
+  el.innerHTML = `<table><thead><tr>${sTh('assets-table',0,'Name')}${sTh('assets-table',1,'Account')}${sTh('assets-table',2,'Type')}${sTh('assets-table',3,'Current NAV/Price')}${sTh('assets-table',4,'Holding Value')}<th></th></tr></thead><tbody>
     ${assets.map(a=>{
       const h = holdingsAll.find(x=>x.asset.id===a.id);
       const cur = a.currency||'INR';
@@ -2090,12 +2304,13 @@ function renderAssetsPage(){
           elssLine = `<div class="native-amt">🔒 ${fmtMoney(lock.lockedValue)} locked${lock.nextUnlockDate?` · next unlock ${fmtDate(lock.nextUnlockDate)}`:''}${lock.unlockedValue>0?` · 🔓 ${fmtMoney(lock.unlockedValue)} free`:''}</div>`;
         }
       }
+      const acc = getAccount(a.accountId);
       return `<tr>
-        <td>${a.name}${elssLine}</td>
-        <td>${accountTag(a.accountId)}</td>
-        <td><span class="badge ${ASSET_TYPE_BADGE[a.type]}">${assetTypeLabel(a)}</span></td>
-        <td>${UNIT_LESS_TYPES.includes(a.type)?'—':(CURRENCY_SYMBOLS[cur]||'₹')+fmtNum(a.nav,4)}</td>
-        <td>${h?fmtMoney(h.currentValue):'—'}${showNative?`<span class="native-amt">${fmtMoney(h.nativeCurrentValue, h.nativeCurrency)}</span>`:''}</td>
+        <td data-sort="${a.name.toLowerCase()}">${a.name}${elssLine}</td>
+        <td data-sort="${acc?acc.name.toLowerCase():''}">${accountTag(a.accountId)}</td>
+        <td data-sort="${assetTypeLabel(a)}"><span class="badge ${ASSET_TYPE_BADGE[a.type]}">${assetTypeLabel(a)}</span></td>
+        <td data-sort="${UNIT_LESS_TYPES.includes(a.type)?-1:a.nav}">${UNIT_LESS_TYPES.includes(a.type)?'—':(CURRENCY_SYMBOLS[cur]||'₹')+fmtNum(a.nav,4)}</td>
+        <td data-sort="${h?h.currentValue:-1}">${h?fmtMoney(h.currentValue):'—'}${showNative?`<span class="native-amt">${fmtMoney(h.nativeCurrentValue, h.nativeCurrency)}</span>`:''}</td>
         <td>
           <button class="icon-btn" onclick="editAsset('${a.id}')">✎</button>
           <button class="icon-btn" onclick="deleteAsset('${a.id}')">🗑</button>
@@ -2271,17 +2486,17 @@ function renderAssetTypesPage(){
   const summaryEl = document.getElementById('assettype-summary-table');
   if (metrics.length===0){ summaryEl.innerHTML = emptyState('No holdings yet', 'Add assets and transactions to see type-wise metrics.'); }
   else{
-    summaryEl.innerHTML = `<table><thead><tr><th>Type</th><th>Count</th><th>Invested</th><th>Current Value</th><th>Gain</th><th>XIRR</th><th>% of Portfolio</th></tr></thead><tbody>
+    summaryEl.innerHTML = `<table><thead><tr>${sTh('assettype-summary-table',0,'Type')}${sTh('assettype-summary-table',1,'Count')}${sTh('assettype-summary-table',2,'Invested')}${sTh('assettype-summary-table',3,'Current Value')}${sTh('assettype-summary-table',4,'Gain')}${sTh('assettype-summary-table',5,'XIRR')}${sTh('assettype-summary-table',6,'% of Portfolio')}</tr></thead><tbody>
       ${metrics.map(m=>{
         const pct = totalCurrentAll>0 ? (m.currentValue/totalCurrentAll*100) : null;
         return `<tr style="cursor:pointer;" onclick="setAssetTypeFilter('${m.type}')">
-          <td><span class="badge ${ASSET_TYPE_BADGE[m.type]}">${ASSET_TYPE_LABELS[m.type]||m.type}</span></td>
-          <td>${m.count}</td>
-          <td>${fmtMoney(m.invested)}</td>
-          <td>${fmtMoney(m.currentValue)}</td>
-          <td class="${m.gain>=0?'pos':'neg'}">${m.gain>=0?'+':''}${fmtMoney(m.gain)}</td>
-          <td class="${(m.xirr||0)>=0?'pos':'neg'}">${m.xirr!==null?fmtPct(m.xirr):'—'}</td>
-          <td>${pct!==null?fmtPct(pct,1):'—'}</td>
+          <td data-sort="${ASSET_TYPE_LABELS[m.type]||m.type}"><span class="badge ${ASSET_TYPE_BADGE[m.type]}">${ASSET_TYPE_LABELS[m.type]||m.type}</span></td>
+          <td data-sort="${m.count}">${m.count}</td>
+          <td data-sort="${m.invested}">${fmtMoney(m.invested)}</td>
+          <td data-sort="${m.currentValue}">${fmtMoney(m.currentValue)}</td>
+          <td data-sort="${m.gain}" class="${m.gain>=0?'pos':'neg'}">${m.gain>=0?'+':''}${fmtMoney(m.gain)}</td>
+          <td data-sort="${m.xirr!==null?m.xirr:-99999}" class="${(m.xirr||0)>=0?'pos':'neg'}">${m.xirr!==null?fmtPct(m.xirr):'—'}</td>
+          <td data-sort="${pct!==null?pct:-1}">${pct!==null?fmtPct(pct,1):'—'}</td>
         </tr>`;
       }).join('')}
     </tbody></table>`;
@@ -2294,17 +2509,18 @@ function renderAssetTypesPage(){
   const holdingsEl = document.getElementById('assettype-holdings-table');
   if (filteredHoldings.length===0){ holdingsEl.innerHTML = emptyState('No holdings', 'Nothing to show for this filter.'); }
   else{
-    holdingsEl.innerHTML = `<table><thead><tr><th>Asset</th><th>Account</th><th>Units</th><th>Invested</th><th>Current Value</th><th>Gain</th><th>XIRR</th></tr></thead><tbody>
+    holdingsEl.innerHTML = `<table><thead><tr>${sTh('assettype-holdings-table',0,'Asset')}${sTh('assettype-holdings-table',1,'Account')}${sTh('assettype-holdings-table',2,'Units')}${sTh('assettype-holdings-table',3,'Invested')}${sTh('assettype-holdings-table',4,'Current Value')}${sTh('assettype-holdings-table',5,'Gain')}${sTh('assettype-holdings-table',6,'XIRR')}</tr></thead><tbody>
       ${filteredHoldings.map(h=>{
         const hx = xirr(h.cashflows);
+        const acc = getAccount(h.asset.accountId);
         return `<tr style="cursor:pointer;" onclick="drillIntoAsset('${h.asset.id}')">
-          <td>${h.asset.name}</td>
-          <td>${accountTag(h.asset.accountId)}</td>
-          <td>${UNIT_LESS_TYPES.includes(h.asset.type)?'—':fmtNum(h.units,3)}</td>
-          <td>${fmtMoney(h.invested)}</td>
-          <td>${fmtMoney(h.currentValue)}</td>
-          <td class="${h.gain>=0?'pos':'neg'}">${h.gain>=0?'+':''}${fmtMoney(h.gain)}</td>
-          <td class="${(hx||0)>=0?'pos':'neg'}">${hx!==null?fmtPct(hx):'—'}</td>
+          <td data-sort="${h.asset.name.toLowerCase()}">${h.asset.name}</td>
+          <td data-sort="${acc?acc.name.toLowerCase():''}">${accountTag(h.asset.accountId)}</td>
+          <td data-sort="${UNIT_LESS_TYPES.includes(h.asset.type)?-1:h.units}">${UNIT_LESS_TYPES.includes(h.asset.type)?'—':fmtNum(h.units,3)}</td>
+          <td data-sort="${h.invested}">${fmtMoney(h.invested)}</td>
+          <td data-sort="${h.currentValue}">${fmtMoney(h.currentValue)}</td>
+          <td data-sort="${h.gain}" class="${h.gain>=0?'pos':'neg'}">${h.gain>=0?'+':''}${fmtMoney(h.gain)}</td>
+          <td data-sort="${hx!==null?hx:-99999}" class="${(hx||0)>=0?'pos':'neg'}">${hx!==null?fmtPct(hx):'—'}</td>
         </tr>`;
       }).join('')}
     </tbody></table>`;
@@ -2320,7 +2536,7 @@ function renderAssetTypesPage(){
     document.getElementById('assettype-drilldown-title').innerHTML =
       `Transactions for ${drilldownAsset.name} <button class="btn btn-sm btn-ghost" onclick="clearAssetDrilldown()" style="margin-left:8px;">✕ Close</button>`;
     const assetTxns = state.transactions.filter(t=>t.assetId===assetTypeDrilldownAssetId).sort((a,b)=>new Date(b.date)-new Date(a.date));
-    document.getElementById('assettype-drilldown-table').innerHTML = renderTxnTable(assetTxns, true);
+    document.getElementById('assettype-drilldown-table').innerHTML = renderTxnTable(assetTxns, true, 'assettype-drilldown-table');
     applyStoredFilter('assettype-drilldown-table');
   }
 }
@@ -2550,10 +2766,10 @@ function renderIncomePage(){
   if (assetNames.length===0){
     byAssetEl.innerHTML = emptyState('No income yet', 'Interest and dividend transactions will summarise here.');
   } else {
-    byAssetEl.innerHTML = `<table><thead><tr><th>Asset</th><th>Interest</th><th>Dividend</th><th>Total</th></tr></thead><tbody>
+    byAssetEl.innerHTML = `<table><thead><tr>${sTh('income-by-asset-table',0,'Asset')}${sTh('income-by-asset-table',1,'Interest')}${sTh('income-by-asset-table',2,'Dividend')}${sTh('income-by-asset-table',3,'Total')}</tr></thead><tbody>
       ${assetNames.map(n=>{
         const r = byAsset[n]; const tot = r.interest+r.dividend;
-        return `<tr><td>${n}</td><td>${fmtMoney(r.interest)}</td><td>${fmtMoney(r.dividend)}</td><td><strong>${fmtMoney(tot)}</strong></td></tr>`;
+        return `<tr><td data-sort="${n.toLowerCase()}">${n}</td><td data-sort="${r.interest}">${fmtMoney(r.interest)}</td><td data-sort="${r.dividend}">${fmtMoney(r.dividend)}</td><td data-sort="${tot}"><strong>${fmtMoney(tot)}</strong></td></tr>`;
       }).join('')}
     </tbody></table>`;
   }
@@ -2563,13 +2779,13 @@ function renderIncomePage(){
   if (events.length===0){
     tblEl.innerHTML = emptyState('No interest or dividend income recorded', 'Add an "Interest (Coupon)" transaction on a bond, an "Interest Credit" on an FD, or a "Dividend" transaction on a mutual fund or stock.');
   } else {
-    tblEl.innerHTML = `<table><thead><tr><th>Date</th><th>Asset</th><th>Type</th><th>Income Type</th><th>Amount</th></tr></thead><tbody>
+    tblEl.innerHTML = `<table><thead><tr>${sTh('income-table',0,'Date')}${sTh('income-table',1,'Asset')}${sTh('income-table',2,'Type')}${sTh('income-table',3,'Income Type')}${sTh('income-table',4,'Amount')}</tr></thead><tbody>
       ${events.map(e=>`<tr>
-        <td>${fmtDate(e.date)}</td>
-        <td>${e.assetName}</td>
-        <td><span class="badge ${ASSET_TYPE_BADGE[e.assetType]}">${ASSET_TYPE_LABELS[e.assetType]}</span></td>
-        <td><span class="badge ${e.incomeType.startsWith('Interest')?'badge-income-interest':'badge-income-dividend'}">${e.incomeType}</span></td>
-        <td class="pos">+${fmtMoney(e.amount)}</td>
+        <td data-sort="${e.date}">${fmtDate(e.date)}</td>
+        <td data-sort="${e.assetName.toLowerCase()}">${e.assetName}</td>
+        <td data-sort="${ASSET_TYPE_LABELS[e.assetType]}"><span class="badge ${ASSET_TYPE_BADGE[e.assetType]}">${ASSET_TYPE_LABELS[e.assetType]}</span></td>
+        <td data-sort="${e.incomeType}"><span class="badge ${e.incomeType.startsWith('Interest')?'badge-income-interest':'badge-income-dividend'}">${e.incomeType}</span></td>
+        <td data-sort="${e.amount}" class="pos">+${fmtMoney(e.amount)}</td>
       </tr>`).join('')}
     </tbody></table>`;
   }
@@ -2582,7 +2798,7 @@ function renderIncomePage(){
    ========================================================================== */
 const INCOME_TXN_TYPES = ['interest_credit','dividend_payout','dividend'];
 const INVEST_TXN_TYPES = ['buy','purchase','lumpsum','sip','switch_in','deposit','installment'];
-const WITHDRAW_TXN_TYPES = ['redeem','switch_out','sell','maturity','withdrawal','prize_money'];
+const WITHDRAW_TXN_TYPES = ['redeem','switch_out','sell','maturity','withdrawal','prize_money','premature_close'];
 
 function currentFyStartYear(){
   const now = new Date();
@@ -2761,17 +2977,17 @@ function renderFyReportPage(){
   if (report.rows.length===0){
     assetTblEl.innerHTML = emptyState('No assets in this period', 'Nothing to report for this financial year yet.');
   } else {
-    assetTblEl.innerHTML = `<table><thead><tr><th>Asset</th><th>Type</th><th>Opening</th><th>Invested</th><th>Withdrawn</th><th>Closing</th><th>Gain</th></tr></thead><tbody>
+    assetTblEl.innerHTML = `<table><thead><tr>${sTh('fy-asset-table',0,'Asset')}${sTh('fy-asset-table',1,'Type')}${sTh('fy-asset-table',2,'Opening')}${sTh('fy-asset-table',3,'Invested')}${sTh('fy-asset-table',4,'Withdrawn')}${sTh('fy-asset-table',5,'Closing')}${sTh('fy-asset-table',6,'Gain')}</tr></thead><tbody>
       ${report.rows.map(r=>`<tr>
-        <td>${r.asset.name}</td>
-        <td><span class="badge ${ASSET_TYPE_BADGE[r.asset.type]}">${assetTypeLabel(r.asset)}</span></td>
-        <td>${fmtMoney(r.openingVal)}</td>
-        <td>${fmtMoney(r.invested)}</td>
-        <td>${fmtMoney(r.withdrawn)}</td>
-        <td>${fmtMoney(r.closingVal)}</td>
-        <td class="${r.gain>=0?'pos':'neg'}">${r.gain>=0?'+':''}${fmtMoney(r.gain)}</td>
+        <td data-sort="${r.asset.name.toLowerCase()}">${r.asset.name}</td>
+        <td data-sort="${assetTypeLabel(r.asset)}"><span class="badge ${ASSET_TYPE_BADGE[r.asset.type]}">${assetTypeLabel(r.asset)}</span></td>
+        <td data-sort="${r.openingVal}">${fmtMoney(r.openingVal)}</td>
+        <td data-sort="${r.invested}">${fmtMoney(r.invested)}</td>
+        <td data-sort="${r.withdrawn}">${fmtMoney(r.withdrawn)}</td>
+        <td data-sort="${r.closingVal}">${fmtMoney(r.closingVal)}</td>
+        <td data-sort="${r.gain}" class="${r.gain>=0?'pos':'neg'}">${r.gain>=0?'+':''}${fmtMoney(r.gain)}</td>
       </tr>`).join('')}
-      <tr style="font-weight:700;">
+      <tr class="summary-row" style="font-weight:700;">
         <td colspan="2">Total</td>
         <td>${fmtMoney(report.totalOpening)}</td>
         <td>${fmtMoney(report.totalInvested)}</td>
@@ -2786,18 +3002,18 @@ function renderFyReportPage(){
   if (report.capGains.length===0){
     capEl.innerHTML = emptyState('No redemptions or sales this year', 'Realised capital gains from redemptions, sales, switches or maturities will appear here.');
   } else {
-    capEl.innerHTML = `<table><thead><tr><th>Date</th><th>Asset</th><th>Type</th><th>Proceeds</th><th>Cost Basis</th><th>Short-term Gain</th><th>Long-term Gain</th><th>Total Gain</th></tr></thead><tbody>
+    capEl.innerHTML = `<table><thead><tr>${sTh('fy-capgains-table',0,'Date')}${sTh('fy-capgains-table',1,'Asset')}${sTh('fy-capgains-table',2,'Type')}${sTh('fy-capgains-table',3,'Proceeds')}${sTh('fy-capgains-table',4,'Cost Basis')}${sTh('fy-capgains-table',5,'Short-term Gain')}${sTh('fy-capgains-table',6,'Long-term Gain')}${sTh('fy-capgains-table',7,'Total Gain')}</tr></thead><tbody>
       ${report.capGains.map(c=>`<tr>
-        <td>${fmtDate(c.date)}</td>
-        <td>${c.assetName}</td>
-        <td><span class="badge ${ASSET_TYPE_BADGE[c.assetType]}">${txnTypeLabel(c.assetType,c.txnType)}</span></td>
-        <td>${fmtMoney(c.proceeds)}</td>
-        <td>${fmtMoney(c.costBasis)}</td>
-        <td class="${c.stGain>=0?'pos':'neg'}">${fmtMoney(c.stGain)}</td>
-        <td class="${c.ltGain>=0?'pos':'neg'}">${fmtMoney(c.ltGain)}</td>
-        <td class="${c.gain>=0?'pos':'neg'}"><strong>${c.gain>=0?'+':''}${fmtMoney(c.gain)}</strong></td>
+        <td data-sort="${c.date}">${fmtDate(c.date)}</td>
+        <td data-sort="${c.assetName.toLowerCase()}">${c.assetName}</td>
+        <td data-sort="${txnTypeLabel(c.assetType,c.txnType)}"><span class="badge ${ASSET_TYPE_BADGE[c.assetType]}">${txnTypeLabel(c.assetType,c.txnType)}</span></td>
+        <td data-sort="${c.proceeds}">${fmtMoney(c.proceeds)}</td>
+        <td data-sort="${c.costBasis}">${fmtMoney(c.costBasis)}</td>
+        <td data-sort="${c.stGain}" class="${c.stGain>=0?'pos':'neg'}">${fmtMoney(c.stGain)}</td>
+        <td data-sort="${c.ltGain}" class="${c.ltGain>=0?'pos':'neg'}">${fmtMoney(c.ltGain)}</td>
+        <td data-sort="${c.gain}" class="${c.gain>=0?'pos':'neg'}"><strong>${c.gain>=0?'+':''}${fmtMoney(c.gain)}</strong></td>
       </tr>`).join('')}
-      <tr style="font-weight:700;"><td colspan="7">Total realised gain</td><td class="${report.totalRealizedGain>=0?'pos':'neg'}">${fmtMoney(report.totalRealizedGain)}</td></tr>
+      <tr class="summary-row" style="font-weight:700;"><td colspan="7">Total realised gain</td><td class="${report.totalRealizedGain>=0?'pos':'neg'}">${fmtMoney(report.totalRealizedGain)}</td></tr>
     </tbody></table>`;
   }
 
@@ -2805,13 +3021,13 @@ function renderFyReportPage(){
   if (report.incomeEvents.length===0){
     incEl.innerHTML = emptyState('No income this year', 'Interest and dividend transactions in this period will appear here.');
   } else {
-    incEl.innerHTML = `<table><thead><tr><th>Date</th><th>Asset</th><th>Income Type</th><th>Amount</th></tr></thead><tbody>
+    incEl.innerHTML = `<table><thead><tr>${sTh('fy-income-table',0,'Date')}${sTh('fy-income-table',1,'Asset')}${sTh('fy-income-table',2,'Income Type')}${sTh('fy-income-table',3,'Amount')}</tr></thead><tbody>
       ${report.incomeEvents.map(e=>`<tr>
-        <td>${fmtDate(e.date)}</td><td>${e.assetName}</td>
-        <td><span class="badge ${e.incomeType.startsWith('Interest')?'badge-income-interest':'badge-income-dividend'}">${e.incomeType}</span></td>
-        <td class="pos">+${fmtMoney(e.amount)}</td>
+        <td data-sort="${e.date}">${fmtDate(e.date)}</td><td data-sort="${e.assetName.toLowerCase()}">${e.assetName}</td>
+        <td data-sort="${e.incomeType}"><span class="badge ${e.incomeType.startsWith('Interest')?'badge-income-interest':'badge-income-dividend'}">${e.incomeType}</span></td>
+        <td data-sort="${e.amount}" class="pos">+${fmtMoney(e.amount)}</td>
       </tr>`).join('')}
-      <tr style="font-weight:700;"><td colspan="3">Total</td><td class="pos">${fmtMoney(report.totalIncome)}</td></tr>
+      <tr class="summary-row" style="font-weight:700;"><td colspan="3">Total</td><td class="pos">${fmtMoney(report.totalIncome)}</td></tr>
     </tbody></table>`;
   }
 
@@ -2829,7 +3045,7 @@ function renderFyReportPage(){
     });
   }
 
-  document.getElementById('fy-txn-table').innerHTML = renderTxnTable(report.txnLog, false);
+  document.getElementById('fy-txn-table').innerHTML = renderTxnTable(report.txnLog, false, 'fy-txn-table');
 
   applyStoredFilter('fy-asset-table');
   applyStoredFilter('fy-capgains-table');
@@ -2942,11 +3158,11 @@ function renderNavUpdatePage(){
   const el = document.getElementById('nav-update-table');
   const relevant = getFilteredAssets().filter(a=>!UNIT_LESS_TYPES.includes(a.type));
   if (relevant.length===0){ el.innerHTML = emptyState('No priced assets', 'Mutual funds, stocks, bonds and gold appear here for manual price updates.'); return; }
-  el.innerHTML = `<table><thead><tr><th>Asset</th><th>Currency</th><th>Current value</th><th>New value</th><th></th></tr></thead><tbody>
+  el.innerHTML = `<table><thead><tr>${sTh('nav-update-table',0,'Asset')}${sTh('nav-update-table',1,'Currency')}${sTh('nav-update-table',2,'Current value')}<th>New value</th><th></th></tr></thead><tbody>
     ${relevant.map(a=>{ const sym = CURRENCY_SYMBOLS[a.currency||'INR']||'₹'; return `<tr>
-      <td>${a.name}</td>
-      <td>${a.currency||'INR'}</td>
-      <td>${sym}${fmtNum(a.nav,4)}</td>
+      <td data-sort="${a.name.toLowerCase()}">${a.name}</td>
+      <td data-sort="${a.currency||'INR'}">${a.currency||'INR'}</td>
+      <td data-sort="${a.nav||0}">${sym}${fmtNum(a.nav,4)}</td>
       <td><input type="number" step="0.0001" style="width:110px; padding:6px 8px; border-radius:6px; border:1px solid var(--card-border); background:var(--bg-soft); color:var(--text);" id="navinput-${a.id}" placeholder="${fmtNum(a.nav,4)}"></td>
       <td><button class="btn btn-sm btn-primary" onclick="updateSingleNav('${a.id}')">Update</button></td>
     </tr>`; }).join('')}
@@ -3213,12 +3429,140 @@ function renderSettingsPage(){
   const clientIdInput = document.getElementById('gdrive-client-id');
   if (clientIdInput && document.activeElement !== clientIdInput) clientIdInput.value = state.settings.gdriveClientId || '';
   renderFxSettingsUI();
+  renderGdrivePersistUI();
 }
 function saveGdriveClientId(){
   ensureSettings();
   state.settings.gdriveClientId = document.getElementById('gdrive-client-id').value.trim();
   scheduleLocalStorageSave();
 }
+
+/* ==========================================================================
+   PERSISTENT GOOGLE DRIVE CONNECTION (advanced, optional) — uses the OAuth
+   "authorization code" flow via a small backend (a Cloudflare Worker the
+   person deploys themselves) instead of the browser-only GIS token flow.
+   This is the only way to get a real refresh token, since Google will not
+   hand one to client-side JS. The refresh token is stored in FinPlan's own
+   settings (so it rides along with JSON/Drive/local-storage backups like
+   everything else) and exchanged for a fresh access token via the Worker
+   whenever needed — no popup, no active browser session required.
+   ========================================================================== */
+function saveGdriveProxyUrl(){
+  ensureSettings();
+  state.settings.gdriveProxyUrl = document.getElementById('gdrive-proxy-url').value.trim().replace(/\/$/,'');
+  scheduleLocalStorageSave();
+}
+function isGdrivePersistentMode(){
+  ensureSettings();
+  return !!(state.settings.gdriveProxyUrl && state.settings.gdriveRefreshToken);
+}
+function renderGdrivePersistUI(){
+  ensureSettings();
+  const urlInput = document.getElementById('gdrive-proxy-url');
+  if (urlInput && document.activeElement !== urlInput) urlInput.value = state.settings.gdriveProxyUrl || '';
+  const statusEl = document.getElementById('gdrive-persist-status');
+  const enableBtn = document.getElementById('btn-gdrive-persist-enable');
+  const revokeBtn = document.getElementById('btn-gdrive-persist-revoke');
+  const active = isGdrivePersistentMode();
+  if (statusEl) statusEl.textContent = active
+    ? '✅ Persistent connection active — reconnects automatically even after fully closing the app.'
+    : 'Not enabled — using the session-only connection above.';
+  if (enableBtn) enableBtn.style.display = active ? 'none' : 'inline-flex';
+  if (revokeBtn) revokeBtn.style.display = active ? 'inline-flex' : 'none';
+}
+
+// Kicks off Google's "authorization code" consent flow (full-page redirect, not a popup) —
+// access_type=offline + prompt=consent is what makes Google actually issue a refresh_token.
+function enableGdrivePersistence(){
+  ensureSettings();
+  const clientId = state.settings.gdriveClientId;
+  const proxyUrl = state.settings.gdriveProxyUrl;
+  if (!clientId){ showToast('Paste your Google OAuth Client ID above first'); return; }
+  if (!proxyUrl){ showToast('Paste your deployed Token Proxy URL first'); return; }
+  const redirectUri = window.location.origin + window.location.pathname;
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    response_type: 'code',
+    scope: 'https://www.googleapis.com/auth/drive.file',
+    access_type: 'offline',
+    prompt: 'consent',
+  });
+  window.location.href = 'https://accounts.google.com/o/oauth2/v2/auth?' + params.toString();
+}
+
+// Runs once on page load — if we've just been redirected back from Google with a
+// ?code=... in the URL, exchange it via the Worker for tokens and clean up the URL.
+async function handleGdriveOAuthRedirect(){
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get('code');
+  if (!code) return;
+  ensureSettings();
+  const proxyUrl = state.settings.gdriveProxyUrl;
+  const redirectUri = window.location.origin + window.location.pathname;
+  window.history.replaceState({}, document.title, redirectUri); // scrub ?code= from the address bar either way
+  if (!proxyUrl){ showToast('Received a Google sign-in code but no Token Proxy URL is saved — enable persistence again after setting it.'); return; }
+  try{
+    const res = await fetch(proxyUrl + '/exchange', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, redirect_uri: redirectUri })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.access_token) throw new Error(data.error || 'Exchange failed');
+    gdriveAccessToken = data.access_token;
+    gdriveTokenExpiry = Date.now() + (data.expires_in*1000);
+    if (data.refresh_token) state.settings.gdriveRefreshToken = data.refresh_token;
+    state.settings.gdriveWasConnected = true;
+    scheduleLocalStorageSave();
+    updateGDriveUI(true);
+    renderGdrivePersistUI();
+    renderAutoBackupUI();
+    showToast(data.refresh_token ? 'Persistent connection enabled!' : 'Reconnected (no new refresh token issued — this is normal on repeat consents)');
+  }catch(err){
+    console.error('Google OAuth code exchange failed', err);
+    showToast('Could not complete persistent connection — check your Token Proxy URL and Worker setup');
+  }
+}
+
+function revokeGdrivePersistence(){
+  if (!confirm('This stops the persistent (server-backed) connection. You can still use the regular session-only "Connect Google Drive" above. Continue?')) return;
+  ensureSettings();
+  state.settings.gdriveRefreshToken = '';
+  scheduleLocalStorageSave();
+  renderGdrivePersistUI();
+  showToast('Persistent connection revoked');
+}
+
+// The single place everything else should call to get a usable access token — prefers the
+// persistent (Worker-backed) refresh when enabled, falling back to the session-only GIS
+// silent refresh otherwise. Returns true/false rather than throwing, so callers can just
+// check the result.
+async function ensureGdriveAccessToken(){
+  if (gdriveTokenFresh()) return true;
+  ensureSettings();
+  if (isGdrivePersistentMode()){
+    try{
+      const res = await fetch(state.settings.gdriveProxyUrl + '/refresh', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: state.settings.gdriveRefreshToken })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.access_token){
+        console.error('Persistent Drive refresh failed', data);
+        return false;
+      }
+      gdriveAccessToken = data.access_token;
+      gdriveTokenExpiry = Date.now() + (data.expires_in*1000);
+      updateGDriveUI(true);
+      return true;
+    }catch(err){
+      console.error('Persistent Drive refresh failed', err);
+      return false;
+    }
+  }
+  return await trySilentDriveRefresh();
+}
+
 function renderFxSettingsUI(){
   ensureSettings();
   document.querySelectorAll('#fx-autofetch-toggle button').forEach(b=>{
@@ -3579,10 +3923,10 @@ let gdriveKeepAliveInterval = null;
 function startGdriveKeepAlive(){
   clearInterval(gdriveKeepAliveInterval);
   gdriveKeepAliveInterval = setInterval(async ()=>{
-    if (!gdriveAccessToken) return;
+    if (!gdriveAccessToken && !isGdrivePersistentMode()) return;
     const msUntilExpiry = gdriveTokenExpiry - Date.now();
-    if (msUntilExpiry < 10*60*1000){ // less than 10 minutes left — renew now, before it lapses
-      const ok = await trySilentDriveRefresh();
+    if (!gdriveAccessToken || msUntilExpiry < 10*60*1000){ // less than 10 minutes left (or none yet) — renew now
+      const ok = await ensureGdriveAccessToken();
       updateGDriveUI(ok);
       renderAutoBackupUI();
     }
@@ -3637,10 +3981,7 @@ function signOutGoogleDrive(){
 }
 
 async function backupToGoogleDrive(){
-  if (!gdriveTokenFresh()){
-    const refreshed = await trySilentDriveRefresh();
-    if (!refreshed){ showToast('Please connect Google Drive first'); return; }
-  }
+  if (!(await ensureGdriveAccessToken())){ showToast('Please connect Google Drive first'); return; }
   const filename = `finplan_backup_${todayISO()}_${Date.now()}.json`;
   const content = JSON.stringify(state, null, 2);
   const metadata = { name: filename, mimeType: 'application/json' };
@@ -3731,10 +4072,7 @@ async function driveUploadOrUpdateFile(name, content){
 }
 
 async function openGoogleDriveRestoreModal(){
-  if (!gdriveTokenFresh()){
-    const refreshed = await trySilentDriveRefresh();
-    if (!refreshed){ showToast('Please connect Google Drive first'); return; }
-  }
+  if (!(await ensureGdriveAccessToken())){ showToast('Please connect Google Drive first'); return; }
   openModalById('modal-gdrive-restore');
   const listEl = document.getElementById('gdrive-restore-list');
   listEl.innerHTML = 'Loading…';
@@ -3956,10 +4294,7 @@ async function performAutoBackup(target){
   if (target==='drive'){
     if (!ab.driveEnabled) return;
     if (snapshot === lastDriveAutoSnapshot) return;
-    if (!gdriveTokenFresh()){
-      const refreshed = await trySilentDriveRefresh();
-      if (!refreshed){ renderAutoBackupUI(); return; }
-    }
+    if (!(await ensureGdriveAccessToken())){ renderAutoBackupUI(); return; }
     try{
       await driveUploadOrUpdateFile('finplan_autobackup.json', snapshot);
       lastDriveAutoSnapshot = snapshot;
@@ -4107,7 +4442,14 @@ function renderAll(){
 const restoredFromLocalStorage = loadStateFromLocalStorage();
 renderAll();
 if (restoredFromLocalStorage) showToast('Restored your data from this browser');
-attemptGdriveAutoReconnect(30);
+handleGdriveOAuthRedirect(); // catches ?code=... if we were just redirected back from Google
+if (isGdrivePersistentMode()){
+  // persistent (Worker-backed) mode doesn't need Google's own session at all — just refresh directly
+  ensureGdriveAccessToken().then(ok=>{ updateGDriveUI(ok); renderAutoBackupUI(); if (ok) startGdriveKeepAlive(); });
+} else {
+  attemptGdriveAutoReconnect(30);
+}
 </script>
+
 </body>
 </html>

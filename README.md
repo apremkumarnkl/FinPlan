@@ -91,6 +91,56 @@ session, since the sign-in token itself isn't saved for security reasons.
 
 ---
 
+## Part 2.5 — Truly persistent Google Drive connection (optional, advanced)
+
+Everything in Part 2 keeps itself signed in automatically *while the app is
+open*, and tries to silently reconnect each time you reopen it. But that has
+a real ceiling: browser-only sign-in cannot survive things like a fully
+closed browser session, a cleared cookie jar, or Google's own session
+policies — because Google will never hand a real, long-lived refresh token
+to JavaScript running in a browser. Only a trusted backend is allowed to
+hold one of those.
+
+This section adds that backend — a tiny, free **Cloudflare Worker** you
+deploy yourself. It's the only thing that ever sees your OAuth Client
+Secret; it never sees your FinPlan data.
+
+1. Go to [dash.cloudflare.com](https://dash.cloudflare.com/) → **Workers &
+   Pages** → **Create** → **Worker**.
+2. Delete the placeholder code and paste in the entire contents of
+   `gdrive-token-proxy-worker.js` from this package.
+3. Go to the Worker's **Settings → Variables** and add:
+   - `GOOGLE_CLIENT_ID` — the same Client ID you used in Part 2.
+   - `GOOGLE_CLIENT_SECRET` — from the same Google Cloud OAuth Client (click
+     it in Google Cloud Console to reveal the secret). Mark this one as
+     **Encrypt** so it's never shown again after saving.
+   - `ALLOWED_ORIGIN` — the exact origin you host FinPlan at (e.g.
+     `https://yourname.github.io`, no trailing slash, no path).
+4. **Deploy**, then copy the Worker's URL (looks like
+   `https://finplan-proxy.yoursubdomain.workers.dev`).
+5. Back in Google Cloud Console, edit your OAuth Client and add your exact
+   FinPlan page URL (e.g. `https://yourname.github.io/finplan.html`) under
+   **"Authorized redirect URIs"** — this is in *addition* to the
+   "Authorized JavaScript origins" entry from Part 2.
+6. In FinPlan, go to **Settings → Google Drive backup → "3. Optional: truly
+   persistent connection"**, paste the Worker's URL into **Token Proxy
+   URL**, and click **Enable persistent connection**. You'll be sent to
+   Google's consent screen (a full page redirect, not a popup) and back.
+
+From then on, FinPlan refreshes its own connection through your Worker —
+no popup, no active browser session required, survives closing the app
+completely.
+
+**One nuance that's Google's rule, not FinPlan's:** while your Google Cloud
+OAuth consent screen is in **"Testing"** publishing status, Google expires
+these tokens after about 7 days, so you'd click "Enable" again periodically.
+Switching the consent screen to **"In production"** (Google Cloud Console →
+OAuth consent screen) removes that expiry — for personal use with the
+`drive.file` scope this doesn't require Google's formal app verification
+review, just changing the publishing status.
+
+---
+
 ## Part 3 — Auto backup (optional)
 
 Once Google Drive is connected (Part 2), or once you've picked a local
@@ -138,3 +188,7 @@ promise:
 - Your transactions, goals, and assets are never sent to any third party or
   server other than the Google Drive file you explicitly choose to back up
   to.
+- If you set up the optional persistent-connection Worker (Part 2.5): it's
+  your own Cloudflare account, running code you can read in full. It only
+  ever handles Google's OAuth tokens — it never receives, stores, or logs
+  your FinPlan data.
