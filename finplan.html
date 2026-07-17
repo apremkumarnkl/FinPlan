@@ -434,6 +434,21 @@ tbody tr:hover{background:rgba(var(--tint-rgb),.02);}
 .goal-collapse-body.open{display:block;}
 .goal-dot{width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:5px;}
 
+.goal-alloc-row{
+  display:grid; grid-template-columns:1.5fr .85fr .65fr auto; gap:8px; align-items:center;
+  padding:8px 0; border-bottom:1px dashed var(--card-border);
+}
+.goal-alloc-row:last-child{border-bottom:none;}
+.goal-alloc-row .alloc-asset-name{font-size:12.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+.goal-alloc-row .alloc-asset-name .fx-hint{margin-top:1px;}
+.goal-alloc-row input{
+  padding:6px 8px; font-size:12.5px; border-radius:7px; border:1px solid var(--card-border);
+  background:var(--bg-soft); color:var(--text); width:100%; font-family:inherit;
+}
+.goal-alloc-add-row{display:flex; gap:8px; margin-top:10px;}
+.goal-alloc-add-row select{flex:1;}
+.goal-alloc-empty{font-size:12.5px; color:var(--text-faint); padding:8px 0;}
+
 /* ---------- Asset labels ---------- */
 .tag-input-box{
   display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:7px 9px; border-radius:9px;
@@ -1548,11 +1563,17 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
     </div>
     <div class="field" style="margin-top:12px;">
       <label>Link existing assets to this goal (optional — leave blank to enter current value manually)</label>
-      <select id="goal-linked-assets" multiple size="4"></select>
+      <div id="goal-alloc-rows"></div>
+      <div class="goal-alloc-add-row">
+        <select id="goal-alloc-add-select"></select>
+        <button type="button" class="btn btn-sm" onclick="addGoalAssetAllocation()">+ Add asset</button>
+      </div>
+      <div class="field-hint">Assets already 100% committed to other goals won't appear here — split an asset across goals by giving it less than 100%.</div>
     </div>
     <div class="field" id="goal-manual-value-field" style="margin-top:12px;">
-      <label>Current value already saved toward this goal (₹) — used if no assets linked</label>
+      <label id="goal-manual-value-label">Current value already saved toward this goal (₹) — used if no assets linked</label>
       <input type="number" id="goal-manual-value" step="100" value="0">
+      <div class="field-hint" id="goal-manual-value-hint" style="display:none;"></div>
     </div>
 
     <div style="margin-top:16px; border-top:1px solid var(--card-border); padding-top:14px;">
@@ -4338,6 +4359,26 @@ function fvOfUnitSip(monthlyRate, stepPct, months){
   return value;
 }
 
+// Reads a goal's linked-asset allocations in the new {assetId, pct} format, transparently
+// migrating the old flat linkedAssetIds array (each treated as 100% allocated) so existing
+// saved goals and sample data keep working without needing to touch them.
+function getGoalAssetAllocations(goal){
+  if (goal.linkedAssetAllocations && goal.linkedAssetAllocations.length) return goal.linkedAssetAllocations;
+  if (goal.linkedAssetIds && goal.linkedAssetIds.length) return goal.linkedAssetIds.map(id=>({assetId:id, pct:100}));
+  return [];
+}
+// How much of an asset (as a %) is already committed to OTHER goals — used both to show
+// "X% already allocated elsewhere" and to hide fully-committed assets from new goals.
+function computeAssetAllocatedElsewhere(assetId, excludeGoalId){
+  let used = 0;
+  for(const g of state.goals){
+    if (excludeGoalId && g.id===excludeGoalId) continue;
+    const entry = getGoalAssetAllocations(g).find(a=>a.assetId===assetId);
+    if (entry) used += entry.pct;
+  }
+  return Math.min(used, 100);
+}
+
 function computeGoalPlan(goal){
   const now = new Date();
   const target = new Date(goal.targetDate);
@@ -4346,15 +4387,25 @@ function computeGoalPlan(goal){
 
   const inflAdjTarget = goal.targetAmount * Math.pow(1+goal.inflation/100, yearsLeft);
 
-  // current value from linked assets or manual
+  // current value from linked assets (scaled by each asset's allocation % toward THIS goal) or manual
   let currentValue = goal.manualValue || 0;
   const linkedHoldings = [];
-  if (goal.linkedAssetIds && goal.linkedAssetIds.length){
+  const allocations = getGoalAssetAllocations(goal);
+  if (allocations.length){
     const holdings = computeHoldings(state.assets);
     currentValue = 0;
-    for(const id of goal.linkedAssetIds){
-      const h = holdings.find(x=>x.asset.id===id);
-      if (h){ linkedHoldings.push(h); currentValue += h.currentValue; }
+    for(const alloc of allocations){
+      const h = holdings.find(x=>x.asset.id===alloc.assetId);
+      if (h){
+        const pct = alloc.pct!=null ? alloc.pct : 100;
+        const allocatedValue = h.currentValue * pct/100;
+        const allocatedInvested = h.invested * pct/100;
+        linkedHoldings.push({
+          ...h, allocPct: pct, allocatedValue, fullCurrentValue: h.currentValue, fullInvested: h.invested,
+          currentValue: allocatedValue, invested: allocatedInvested
+        });
+        currentValue += allocatedValue;
+      }
     }
   }
 
@@ -4658,12 +4709,12 @@ function renderGoalsPage(){
       <div class="goal-collapse-head" onclick="toggleGoalCollapse(this, 'goal-collapse-assets-${g.id}')"><span class="chev">▸</span> Allocated Assets (${plan.linkedHoldings.length})</div>
       <div class="goal-collapse-body" id="goal-collapse-assets-${g.id}">
         <div class="table-wrap">
-          <table><thead><tr><th>Fund</th><th>Value</th><th>Alloc %</th></tr></thead><tbody>
+          <table><thead><tr><th>Fund</th><th>Value toward goal</th><th>% of goal</th><th>% of fund used</th></tr></thead><tbody>
             ${plan.linkedHoldings.map(h=>{
-              const pct = plan.currentValue>0 ? h.currentValue/plan.currentValue*100 : 0;
+              const pctOfGoal = plan.currentValue>0 ? h.currentValue/plan.currentValue*100 : 0;
               const bucket = ALLOC_BUCKET[h.asset.type];
               const dotColor = bucket==='Equity'?'var(--equity)':bucket==='Debt'?'var(--gold)':bucket==='Gold'?'var(--gold-alt, #fbbf24)':'var(--hybrid)';
-              return `<tr><td><span class="goal-dot" style="background:${dotColor};"></span>${h.asset.name}</td><td>${fmtMoney(h.currentValue)}</td><td>${fmtPct(pct,1)}</td></tr>`;
+              return `<tr><td><span class="goal-dot" style="background:${dotColor};"></span>${h.asset.name}<div class="fx-hint">Fund total: ${fmtMoney(h.fullCurrentValue)}</div></td><td>${fmtMoney(h.currentValue)}</td><td>${fmtPct(pctOfGoal,1)}</td><td>${fmtPct(h.allocPct,0)}</td></tr>`;
             }).join('')}
           </tbody></table>
         </div>
@@ -4778,12 +4829,110 @@ function openGoalModal(existing){
   document.getElementById('goal-postgoal-return').value = existing && existing.postGoalReturnPct!=null ? existing.postGoalReturnPct : 7;
   toggleGoalPostGoalFields();
 
-  const linkSel = document.getElementById('goal-linked-assets');
-  linkSel.innerHTML = state.assets.map(a=>`<option value="${a.id}">${a.name}</option>`).join('');
-  if (existing && existing.linkedAssetIds){
-    [...linkSel.options].forEach(o=>{ if (existing.linkedAssetIds.includes(o.value)) o.selected=true; });
-  }
+  editingGoalId = existing ? existing.id : null;
+  currentGoalAssetAllocations = existing ? getGoalAssetAllocations(existing).map(a=>({...a})) : [];
+  renderGoalAllocRows();
   openModalById('modal-goal');
+}
+// Working state while the Goal modal is open: [{assetId, pct}]. Rebuilt fresh each time the
+// modal opens (from the goal's saved allocations, migrating the old flat linkedAssetIds format
+// if needed), then mutated as the person adds/removes/edits rows before Save actually persists it.
+let currentGoalAssetAllocations = [];
+let editingGoalId = null; // so "allocated elsewhere" math excludes THIS goal's own existing claim
+
+function renderGoalAllocRows(){
+  const holdings = computeHoldings(state.assets);
+  const rowsEl = document.getElementById('goal-alloc-rows');
+  if (currentGoalAssetAllocations.length===0){
+    rowsEl.innerHTML = `<div class="goal-alloc-empty">No assets linked yet — add one below, or leave blank to enter a value manually.</div>`;
+  } else {
+    rowsEl.innerHTML = currentGoalAssetAllocations.map((alloc,i)=>{
+      const h = holdings.find(x=>x.asset.id===alloc.assetId);
+      const assetName = h ? h.asset.name : '(deleted asset)';
+      const fullValue = h ? h.currentValue : 0;
+      const value = fullValue * alloc.pct/100;
+      const elsewhere = computeAssetAllocatedElsewhere(alloc.assetId, editingGoalId);
+      return `
+      <div class="goal-alloc-row">
+        <div class="alloc-asset-name">${assetName}<div class="fx-hint">Total: ${fmtMoney(fullValue)}${elsewhere>0?` · ${fmtPct(elsewhere,0)} used elsewhere`:''}</div></div>
+        <input type="number" step="100" value="${value.toFixed(2)}" onchange="syncGoalAllocValue(${i}, this.value)" title="Value toward this goal">
+        <input type="number" step="1" min="0" max="100" value="${alloc.pct.toFixed(1)}" onchange="syncGoalAllocPct(${i}, this.value)" title="Allocation %">
+        <button type="button" class="icon-btn" onclick="removeGoalAssetAllocation(${i})">🗑</button>
+      </div>`;
+    }).join('');
+  }
+  populateGoalAllocAddSelect();
+  updateGoalManualValueFromAllocations();
+}
+function populateGoalAllocAddSelect(){
+  const sel = document.getElementById('goal-alloc-add-select');
+  const alreadyLinked = new Set(currentGoalAssetAllocations.map(a=>a.assetId));
+  const eligible = state.assets.filter(a=>{
+    if (alreadyLinked.has(a.id)) return false;
+    return computeAssetAllocatedElsewhere(a.id, editingGoalId) < 100; // fully-committed assets are hidden
+  });
+  if (eligible.length===0){
+    sel.innerHTML = `<option value="">No available assets — all are fully allocated elsewhere</option>`;
+    sel.disabled = true;
+  } else {
+    sel.disabled = false;
+    sel.innerHTML = eligible.map(a=>{
+      const remaining = 100 - computeAssetAllocatedElsewhere(a.id, editingGoalId);
+      return `<option value="${a.id}">${a.name}${remaining<100?` (${fmtPct(remaining,0)} available)`:''}</option>`;
+    }).join('');
+  }
+}
+function addGoalAssetAllocation(){
+  const sel = document.getElementById('goal-alloc-add-select');
+  const assetId = sel.value;
+  if (!assetId) return;
+  const remaining = 100 - computeAssetAllocatedElsewhere(assetId, editingGoalId);
+  currentGoalAssetAllocations.push({ assetId, pct: Math.max(Math.min(remaining,100),0) });
+  renderGoalAllocRows();
+}
+function removeGoalAssetAllocation(index){
+  currentGoalAssetAllocations.splice(index,1);
+  renderGoalAllocRows();
+}
+function syncGoalAllocValue(index, value){
+  const holdings = computeHoldings(state.assets);
+  const alloc = currentGoalAssetAllocations[index];
+  const h = holdings.find(x=>x.asset.id===alloc.assetId);
+  const fullValue = h ? h.currentValue : 0;
+  const v = parseFloat(value)||0;
+  alloc.pct = fullValue>0 ? Math.max(Math.min(v/fullValue*100,100),0) : 0;
+  renderGoalAllocRows();
+}
+function syncGoalAllocPct(index, pct){
+  const p = Math.max(Math.min(parseFloat(pct)||0,100),0);
+  currentGoalAssetAllocations[index].pct = p;
+  renderGoalAllocRows();
+}
+// Keeps "Current value" (the manual-entry fallback field) in sync as an informational read-out
+// whenever assets are linked — it's what computeGoalPlan() actually falls back to when NO
+// assets are linked, so the field stays honest about when it's actually being used.
+function updateGoalManualValueFromAllocations(){
+  const holdings = computeHoldings(state.assets);
+  const input = document.getElementById('goal-manual-value');
+  const label = document.getElementById('goal-manual-value-label');
+  const hint = document.getElementById('goal-manual-value-hint');
+  if (currentGoalAssetAllocations.length){
+    const total = currentGoalAssetAllocations.reduce((s,a)=>{
+      const h = holdings.find(x=>x.asset.id===a.assetId);
+      return s + (h ? h.currentValue*a.pct/100 : 0);
+    },0);
+    input.value = total.toFixed(2);
+    input.readOnly = true;
+    input.style.opacity = '.7';
+    label.textContent = 'Current value (auto-calculated from linked assets above)';
+    hint.style.display = 'block';
+    hint.textContent = `Sum of ${currentGoalAssetAllocations.length} linked asset allocation(s) — updates automatically.`;
+  } else {
+    input.readOnly = false;
+    input.style.opacity = '1';
+    label.textContent = 'Current value already saved toward this goal (₹) — used if no assets linked';
+    hint.style.display = 'none';
+  }
 }
 function toggleGoalRetirementFields(){
   const on = document.getElementById('goal-is-retirement').checked;
@@ -4813,7 +4962,7 @@ function saveGoal(){
   const targetAmount = parseFloat(document.getElementById('goal-target').value);
   const targetDate = document.getElementById('goal-date').value;
   if (!name || isNaN(targetAmount) || !targetDate){ showToast('Name, target amount and date are required'); return; }
-  const linkedAssetIds = [...document.getElementById('goal-linked-assets').selectedOptions].map(o=>o.value);
+  const linkedAssetAllocations = currentGoalAssetAllocations.map(a=>({assetId:a.assetId, pct:a.pct}));
   const existing = state.goals.find(g=>g.id===id);
   const isRetirement = document.getElementById('goal-is-retirement').checked;
   const goal = {
@@ -4825,7 +4974,7 @@ function saveGoal(){
     equityNow: parseFloat(document.getElementById('goal-equity-now').value)||0,
     equityFinal: parseFloat(document.getElementById('goal-equity-final').value)||0,
     glideYears: parseFloat(document.getElementById('goal-glide-years').value)||0,
-    linkedAssetIds,
+    linkedAssetAllocations,
     manualValue: parseFloat(document.getElementById('goal-manual-value').value)||0,
     isRetirement,
     retirementAge: isRetirement ? (parseFloat(document.getElementById('goal-retirement-age').value)||null) : null,
@@ -6024,6 +6173,7 @@ function renderAll(){
   renderLabelsPage();
   renderLabelAnalysisPage();
   renderInsurancePage();
+  renderGoalsPage();
   renderGoalSimulator();
   renderIncomePage();
   renderFyReportPage();
