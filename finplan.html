@@ -1039,12 +1039,15 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
       <div class="topbar">
         <div>
           <div class="page-title">NAV / Price update</div>
-          <div class="page-sub">Update current valuations manually, fetch live mutual fund NAVs, or paste a NAVALL.txt-style fallback file</div>
+          <div class="page-sub">Update current valuations manually, fetch live mutual fund NAVs &amp; stock prices, or paste a NAVALL.txt-style fallback file</div>
         </div>
-        <button class="btn btn-primary" onclick="fetchAllLatestNavs()">🔄 Fetch all latest NAVs</button>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn btn-primary" onclick="fetchAllLatestNavs()">🔄 Fetch all latest NAVs</button>
+          <button class="btn btn-primary" onclick="fetchAllLatestStockPrices()">🔄 Fetch all stock prices</button>
+        </div>
       </div>
 
-      <div class="field-hint" style="margin-bottom:16px;">Live fetching covers mutual funds only, via the free <a href="https://www.mfapi.in/" target="_blank" rel="noopener">mfapi.in</a> service — set a fund's AMFI scheme code in its Edit form first (use "🔍 Find scheme" to look it up by name). Stocks, gold and other price types still need a manual update below, since there's no similarly reliable free public API for those.</div>
+      <div class="field-hint" style="margin-bottom:16px;">Mutual fund NAVs fetch live via the free <a href="https://www.mfapi.in/" target="_blank" rel="noopener">mfapi.in</a> service — no setup needed, just set a fund's AMFI scheme code in its Edit form ("🔍 Find scheme" to look it up by name). Stock/share prices need a one-time Stock Price Proxy setup in Settings first (see the note there for why), then a ticker symbol on each stock's Edit form. Gold and other price types still need a manual update below.</div>
 
       <div class="two-col">
         <div class="card">
@@ -1162,6 +1165,30 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
         <div class="fx-hint" id="gdrive-persist-status" style="margin-top:8px;">Not enabled — using the session-only connection above.</div>
         <div class="field-hint" style="margin-top:8px;">*How long the connection actually lasts is set by Google, not FinPlan: while your Google Cloud OAuth consent screen is in "Testing" status, Google expires these tokens after about 7 days, requiring one re-click of "Enable" — switch the consent screen to "In production" in Google Cloud Console (no formal app review needed for personal use with this scope) for it to stop expiring altogether.</div>
       </div>
+
+      <div class="section-title" style="margin-top:24px;">Live stock/share prices (optional)</div>
+      <div class="field-hint" style="margin-bottom:12px;">Two ways to get this, pick whichever suits you — both are optional and independent.</div>
+
+      <div class="card" style="margin-bottom:14px;">
+        <div class="card-title">Option A — No backend needed (Alpha Vantage)</div>
+        <p style="color:var(--text-dim); font-size:12.5px;">Alpha Vantage's public API can be called directly from the browser — no server needed. Get a free key at <a href="https://www.alphavantage.co/support/#api-key" target="_blank" rel="noopener">alphavantage.co</a> (instant, no credit card).</p>
+        <div class="field" style="margin-top:8px;">
+          <label>Alpha Vantage API key</label>
+          <input type="text" id="alphavantage-api-key" oninput="saveAlphaVantageApiKey()" placeholder="e.g. ABC123XYZ456">
+        </div>
+        <div class="field-hint" style="margin-top:8px;">⚠ The free tier is limited to <strong>25 requests per day, total</strong> — each stock fetch (and "Fetch all") counts against that. Fine for occasionally refreshing a handful of holdings; not for large portfolios or frequent updates. Coverage is strongest for US-listed stocks; Indian NSE/BSE symbols may need the <code>.BSE</code> suffix and aren't always available — check Alpha Vantage's own symbol search if a fetch fails.</div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Option B — Higher volume, needs a one-time backend deploy</div>
+        <div class="warn-box" style="margin-bottom:12px;">⚠ Indian exchanges (NSE/BSE) block direct browser requests without session cookies, and Yahoo Finance's fuller data needs headers browsers can't set — this option relays through a free Cloudflare Worker you deploy yourself, with no daily request cap. It never sees your FinPlan data, only ticker symbols.</div>
+        <p style="color:var(--text-dim); font-size:12.5px;">Deploy the Worker script from your download package (<code>stock-price-proxy-worker.js</code>) to <a href="https://dash.cloudflare.com/" target="_blank" rel="noopener">Cloudflare Workers</a> (free tier) — full setup steps are in the comments at the top of the file. Then paste its URL below.</p>
+        <div class="field" style="margin-top:8px;">
+          <label>Stock Price Proxy URL</label>
+          <input type="text" id="stock-proxy-url" oninput="saveStockProxyUrl()" placeholder="https://your-worker-name.your-subdomain.workers.dev">
+        </div>
+      </div>
+      <div class="field-hint" style="margin-top:10px;">Once either is set, add a ticker symbol to each stock in its Edit form (e.g. <code>RELIANCE.NS</code> for NSE, <code>SYMBOL.BO</code>/<code>.BSE</code> for BSE, or just <code>AAPL</code> for US stocks) to enable "Fetch Latest Price" on the NAV Update page. If both are configured, Alpha Vantage is tried first since it needs no deployment, falling back to your Worker if that fails. Either way, treat fetched prices as indicative, same as any free quote source.</div>
 
       <div class="section-title" style="margin-top:24px;">Auto backup</div>
       <div class="warn-box">⚠ Auto-backup only runs while this tab stays open — it can't run in the background after you close it.</div>
@@ -1382,6 +1409,11 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
           <button type="button" class="btn btn-sm" onclick="openMfSchemeSearch()">🔍 Find scheme</button>
         </div>
         <div class="field-hint">Optional — set this once to enable one-click "Fetch Latest NAV" on the NAV Update page, via the free mfapi.in service.</div>
+      </div>
+      <div class="field" id="asset-ticker-field" style="display:none;">
+        <label>Ticker symbol (for fetching live price)</label>
+        <input type="text" id="asset-ticker" placeholder="e.g. RELIANCE.NS, SYMBOL.BO, or AAPL">
+        <div class="field-hint">Optional — needs a Stock Price Proxy URL set in Settings first. Indian stocks: add .NS (NSE) or .BO (BSE). US stocks: no suffix.</div>
       </div>
     </div>
     <div class="field" style="margin-top:12px;">
@@ -1750,6 +1782,8 @@ function ensureSettings(){
   if (state.settings.gdriveClientId === undefined) state.settings.gdriveClientId = '';
   if (state.settings.gdriveWasConnected === undefined) state.settings.gdriveWasConnected = false;
   if (state.settings.gdriveProxyUrl === undefined) state.settings.gdriveProxyUrl = '';
+  if (state.settings.stockPriceProxyUrl === undefined) state.settings.stockPriceProxyUrl = '';
+  if (state.settings.alphaVantageApiKey === undefined) state.settings.alphaVantageApiKey = '';
   if (state.settings.gdriveRefreshToken === undefined) state.settings.gdriveRefreshToken = '';
 }
 function ensureAutoBackupSettings(){
@@ -3758,6 +3792,7 @@ function onAssetTypeChange(){
   document.getElementById('asset-coupon-field').style.display = type==='bond' ? 'block' : 'none';
   document.getElementById('asset-nps-tier-field').style.display = type==='nps' ? 'block' : 'none';
   document.getElementById('asset-amfi-field').style.display = MF_ASSET_TYPES.includes(type) ? 'block' : 'none';
+  document.getElementById('asset-ticker-field').style.display = (type==='stock' || type==='us_stock') ? 'block' : 'none';
 
   // default currency by type, only auto-set if the field hasn't been hand-edited for this open
   const curSel = document.getElementById('asset-currency');
@@ -3824,6 +3859,7 @@ function openAssetModal(existing){
   document.getElementById('asset-coupon').value = existing && existing.couponRate ? existing.couponRate : '';
   document.getElementById('asset-nps-tier').value = existing && existing.npsTier ? existing.npsTier : 'tier1';
   document.getElementById('asset-amfi-code').value = existing && existing.amfiCode ? existing.amfiCode : '';
+  document.getElementById('asset-ticker').value = existing && existing.tickerSymbol ? existing.tickerSymbol : '';
   currentAssetLabels = existing && existing.labels ? [...existing.labels] : [];
   document.getElementById('asset-labels-input').value = '';
   populateLabelDatalist();
@@ -3860,13 +3896,14 @@ function saveAsset(){
   const couponRate = parseFloat(document.getElementById('asset-coupon').value) || null;
   const npsTier = document.getElementById('asset-nps-tier').value || 'tier1';
   const amfiCode = document.getElementById('asset-amfi-code').value.trim() || null;
+  const tickerSymbol = document.getElementById('asset-ticker').value.trim() || null;
   const accountId = document.getElementById('asset-account').value;
   const currency = document.getElementById('asset-currency').value || 'INR';
   if (!name){ showToast('Name is required'); return; }
   // catch a label still sitting in the input box that the person didn't press Enter on
   const strayLabel = document.getElementById('asset-labels-input').value.trim();
   if (strayLabel) addAssetLabel(strayLabel);
-  const asset = { id: id||uid('asset'), name, type, nav, faceValue, couponRate, npsTier, amfiCode, accountId, currency, labels: currentAssetLabels.slice() };
+  const asset = { id: id||uid('asset'), name, type, nav, faceValue, couponRate, npsTier, amfiCode, tickerSymbol, accountId, currency, labels: currentAssetLabels.slice() };
   const idx = state.assets.findIndex(a=>a.id===asset.id);
   if (idx>=0) state.assets[idx] = {...state.assets[idx], ...asset}; else state.assets.push(asset);
   closeModal('modal-asset');
@@ -4437,15 +4474,18 @@ function renderNavUpdatePage(){
   el.innerHTML = `<table><thead><tr>${sTh('nav-update-table',0,'Asset')}${sTh('nav-update-table',1,'Currency')}${sTh('nav-update-table',2,'Current value')}<th>New value</th><th></th></tr></thead><tbody>
     ${relevant.map(a=>{
       const sym = CURRENCY_SYMBOLS[a.currency||'INR']||'₹';
-      const canFetch = MF_ASSET_TYPES.includes(a.type) && a.amfiCode;
+      const canFetchNav = MF_ASSET_TYPES.includes(a.type) && a.amfiCode;
+      const canFetchStock = (a.type==='stock' || a.type==='us_stock') && a.tickerSymbol;
+      const subLine = canFetchNav ? `<div class="fx-hint">AMFI: ${a.amfiCode}</div>` : (canFetchStock ? `<div class="fx-hint">Ticker: ${a.tickerSymbol}</div>` : '');
       return `<tr>
-      <td data-sort="${a.name.toLowerCase()}">${a.name}${canFetch?`<div class="fx-hint">AMFI: ${a.amfiCode}</div>`:''}</td>
+      <td data-sort="${a.name.toLowerCase()}">${a.name}${subLine}</td>
       <td data-sort="${a.currency||'INR'}">${a.currency||'INR'}</td>
       <td data-sort="${a.nav||0}">${sym}${fmtNum(a.nav,4)}</td>
       <td><input type="number" step="0.0001" style="width:110px; padding:6px 8px; border-radius:6px; border:1px solid var(--card-border); background:var(--bg-soft); color:var(--text);" id="navinput-${a.id}" placeholder="${fmtNum(a.nav,4)}"></td>
       <td style="white-space:nowrap;">
         <button class="btn btn-sm btn-primary" onclick="updateSingleNav('${a.id}')">Update</button>
-        ${canFetch?`<button class="btn btn-sm" onclick="fetchLatestNavForAsset('${a.id}')" title="Fetch latest NAV from mfapi.in">🔄 Fetch</button>`:''}
+        ${canFetchNav?`<button class="btn btn-sm" onclick="fetchLatestNavForAsset('${a.id}')" title="Fetch latest NAV from mfapi.in">🔄 Fetch</button>`:''}
+        ${canFetchStock?`<button class="btn btn-sm" onclick="fetchLatestStockPrice('${a.id}')" title="Fetch latest price via your Stock Price Proxy">🔄 Fetch</button>`:''}
       </td>
     </tr>`; }).join('')}
   </tbody></table>`;
@@ -5384,6 +5424,10 @@ function renderSettingsPage(){
   if (fxInput && document.activeElement !== fxInput) fxInput.value = state.settings.usdInrRate;
   const clientIdInput = document.getElementById('gdrive-client-id');
   if (clientIdInput && document.activeElement !== clientIdInput) clientIdInput.value = state.settings.gdriveClientId || '';
+  const stockProxyInput = document.getElementById('stock-proxy-url');
+  if (stockProxyInput && document.activeElement !== stockProxyInput) stockProxyInput.value = state.settings.stockPriceProxyUrl || '';
+  const avInput = document.getElementById('alphavantage-api-key');
+  if (avInput && document.activeElement !== avInput) avInput.value = state.settings.alphaVantageApiKey || '';
   renderFxSettingsUI();
   renderGdrivePersistUI();
 }
@@ -5408,6 +5452,92 @@ function saveGdriveProxyUrl(){
   state.settings.gdriveProxyUrl = document.getElementById('gdrive-proxy-url').value.trim().replace(/\/$/,'');
   scheduleLocalStorageSave();
 }
+
+/* ==========================================================================
+   LIVE STOCK/SHARE PRICE FETCHING (optional, needs the user's own deployed
+   stock-price-proxy-worker.js) — see that file and the Settings-page warning
+   above for why this can't be a direct no-backend browser fetch the way MF
+   NAVs and FX rates are.
+   ========================================================================== */
+function saveStockProxyUrl(){
+  ensureSettings();
+  state.settings.stockPriceProxyUrl = document.getElementById('stock-proxy-url').value.trim().replace(/\/$/,'');
+  scheduleLocalStorageSave();
+}
+function saveAlphaVantageApiKey(){
+  ensureSettings();
+  state.settings.alphaVantageApiKey = document.getElementById('alphavantage-api-key').value.trim();
+  scheduleLocalStorageSave();
+}
+// Alpha Vantage's public GLOBAL_QUOTE endpoint is CORS-enabled and uses a simple query-parameter
+// API key rather than a custom header, so — unlike Yahoo Finance or NSE/BSE — it can genuinely be
+// called directly from the browser with no backend at all. Returns {price, currency} or throws.
+async function fetchViaAlphaVantage(tickerSymbol){
+  const key = state.settings.alphaVantageApiKey;
+  const res = await fetch(`https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${encodeURIComponent(tickerSymbol)}&apikey=${encodeURIComponent(key)}`);
+  const data = await res.json();
+  if (data['Note'] || data['Information']){
+    // Alpha Vantage returns HTTP 200 even when the daily quota is used up, with an explanatory message here instead
+    throw new Error(data['Note'] || data['Information'] || 'Daily request limit reached');
+  }
+  const quote = data['Global Quote'];
+  const price = quote && parseFloat(quote['05. price']);
+  if (!price || isNaN(price) || price<=0) throw new Error('No quote data for this symbol');
+  return { price, currency: null }; // Alpha Vantage's GLOBAL_QUOTE doesn't report currency — assumed to match the asset's own
+}
+async function fetchLatestStockPrice(assetId){
+  ensureSettings();
+  const asset = getAsset(assetId);
+  if (!asset || !asset.tickerSymbol){ showToast('This asset has no ticker symbol set — edit it and add one first'); return false; }
+  const hasAlphaVantage = !!state.settings.alphaVantageApiKey;
+  const hasWorker = !!state.settings.stockPriceProxyUrl;
+  if (!hasAlphaVantage && !hasWorker){ showToast('Set up a live price source in Settings first (Alpha Vantage key or Stock Price Proxy URL)'); return false; }
+
+  // Try Alpha Vantage first since it needs no deployment; fall back to the Worker if that fails or isn't set
+  if (hasAlphaVantage){
+    try{
+      const { price } = await fetchViaAlphaVantage(asset.tickerSymbol);
+      asset.nav = price;
+      showToast(`${asset.name} updated to ${fmtNum(price,2)} (via Alpha Vantage)`);
+      renderAll();
+      return true;
+    }catch(err){
+      console.warn('Alpha Vantage fetch failed, trying Worker fallback if configured', err.message);
+      if (!hasWorker){ showToast(`${asset.name}: ${err.message}`); return false; }
+    }
+  }
+  try{
+    const res = await fetch(`${state.settings.stockPriceProxyUrl}/quote?symbol=${encodeURIComponent(asset.tickerSymbol)}`);
+    const data = await res.json();
+    if (!res.ok || data.error){ showToast(`${asset.name}: ${data.error || 'fetch failed'}`); return false; }
+    const price = parseFloat(data.price);
+    if (isNaN(price) || price<=0){ showToast(`${asset.name}: invalid price in response`); return false; }
+    asset.nav = price;
+    showToast(`${asset.name} updated to ${CURRENCY_SYMBOLS[data.currency]||data.currency||''}${fmtNum(price,2)}${data.marketState?` (${data.marketState})`:''}`);
+    renderAll();
+    return true;
+  }catch(err){
+    console.error('Live stock price fetch failed for', asset.name, err);
+    showToast(`${asset.name}: fetch failed — check your internet connection and setup`);
+    return false;
+  }
+}
+async function fetchAllLatestStockPrices(){
+  const eligible = state.assets.filter(a=>(a.type==='stock'||a.type==='us_stock') && a.tickerSymbol);
+  if (eligible.length===0){ showToast('No stocks have a ticker symbol set yet — edit one and add it first'); return; }
+  if (!state.settings.alphaVantageApiKey && !state.settings.stockPriceProxyUrl){ showToast('Set up a live price source in Settings first (Alpha Vantage key or Stock Price Proxy URL)'); return; }
+  if (state.settings.alphaVantageApiKey && eligible.length>25){
+    showToast(`⚠ Alpha Vantage's free tier allows only 25 requests/day — you have ${eligible.length} stocks, so some may not update. Consider the Worker option for larger portfolios.`);
+  }
+  showToast(`Fetching latest price for ${eligible.length} stock(s)…`);
+  let ok = 0;
+  for(const a of eligible){
+    const success = await fetchLatestStockPrice(a.id);
+    if (success) ok++;
+  }
+  showToast(`Done — updated ${ok} of ${eligible.length} stock(s)`);
+}
+
 function isGdrivePersistentMode(){
   ensureSettings();
   return !!(state.settings.gdriveProxyUrl && state.settings.gdriveRefreshToken);
