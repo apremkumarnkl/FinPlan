@@ -449,6 +449,13 @@ tbody tr:hover{background:rgba(var(--tint-rgb),.02);}
 .goal-alloc-add-row select{flex:1;}
 .goal-alloc-empty{font-size:12.5px; color:var(--text-faint); padding:8px 0;}
 
+.mf-search-result{
+  padding:10px 12px; border-radius:9px; cursor:pointer; font-size:13px; margin-bottom:4px;
+  border:1px solid transparent;
+}
+.mf-search-result:hover{background:rgba(var(--tint-rgb),.05); border-color:var(--card-border);}
+.mf-search-result .scheme-code{font-size:11px; color:var(--text-faint); margin-top:2px;}
+
 /* ---------- Asset labels ---------- */
 .tag-input-box{
   display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:7px 9px; border-radius:9px;
@@ -930,7 +937,7 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
         </div>
       </div>
 
-      <div class="grid grid-3" id="income-stats"></div>
+      <div class="grid grid-4" id="income-stats"></div>
 
       <div class="grid grid-2" style="margin-top:16px;">
         <div class="card">
@@ -1032,11 +1039,12 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
       <div class="topbar">
         <div>
           <div class="page-title">NAV / Price update</div>
-          <div class="page-sub">Update current valuations manually, or paste a NAVALL.txt-style fallback file</div>
+          <div class="page-sub">Update current valuations manually, fetch live mutual fund NAVs, or paste a NAVALL.txt-style fallback file</div>
         </div>
+        <button class="btn btn-primary" onclick="fetchAllLatestNavs()">🔄 Fetch all latest NAVs</button>
       </div>
 
-      <div class="warn-box">⚠ This demo has no live internet fetch (browser sandbox). Update prices manually below, or paste NAV data in the NAVALL fallback format to bulk-update registered mutual funds.</div>
+      <div class="field-hint" style="margin-bottom:16px;">Live fetching covers mutual funds only, via the free <a href="https://www.mfapi.in/" target="_blank" rel="noopener">mfapi.in</a> service — set a fund's AMFI scheme code in its Edit form first (use "🔍 Find scheme" to look it up by name). Stocks, gold and other price types still need a manual update below, since there's no similarly reliable free public API for those.</div>
 
       <div class="two-col">
         <div class="card">
@@ -1275,6 +1283,26 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
         <input type="number" id="txn-splitratio" step="0.01" placeholder="e.g. 2 for a 1:2 split, 0.5 for a 2:1 reverse split">
         <div class="field-hint">A 1:2 split (1 share becomes 2) is ratio 2. A 2:1 reverse split (2 shares become 1) is ratio 0.5.</div>
       </div>
+      <div class="field" id="txn-tax-field" style="display:none;">
+        <label id="txn-tax-label">Tax deducted / TDS (₹, optional)</label>
+        <input type="number" id="txn-tax" step="0.01" placeholder="e.g. 1000">
+        <div class="field-hint" id="txn-tax-hint">If tax was withheld before you received this, enter it here — the Income page and FY Report will show gross vs. net amounts.</div>
+      </div>
+      <div class="field" id="txn-div-currency-field" style="display:none;">
+        <label>Amount entered in</label>
+        <select id="txn-div-currency" onchange="onDividendCurrencyChange()">
+          <option value="USD">USD (as traded on the US exchange)</option>
+          <option value="INR">INR (already converted, e.g. by an Indian broker)</option>
+        </select>
+      </div>
+      <div class="field" id="txn-fx-rate-field" style="display:none;">
+        <label>USD → INR exchange rate on this transaction's date</label>
+        <div style="display:flex; gap:8px;">
+          <input type="number" id="txn-fx-rate" step="0.0001" placeholder="e.g. 83.25" style="flex:1;">
+          <button type="button" class="btn btn-sm" onclick="fetchHistoricalFxRateForTxn(this)">🔄 Fetch rate</button>
+        </div>
+        <div class="field-hint">Uses the actual rate on the transaction date (via frankfurter.app) rather than today's rate, so the INR value stays historically accurate.</div>
+      </div>
     </div>
     <div class="modal-actions">
       <button class="btn" onclick="closeModal('modal-txn')">Cancel</button>
@@ -1347,6 +1375,14 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
         <label id="asset-nav-label">Current NAV / Price</label>
         <input type="number" id="asset-nav" step="0.0001" placeholder="latest known value">
       </div>
+      <div class="field" id="asset-amfi-field" style="display:none;">
+        <label>AMFI scheme code (for fetching live NAV)</label>
+        <div style="display:flex; gap:8px;">
+          <input type="text" id="asset-amfi-code" placeholder="e.g. 120503" style="flex:1;">
+          <button type="button" class="btn btn-sm" onclick="openMfSchemeSearch()">🔍 Find scheme</button>
+        </div>
+        <div class="field-hint">Optional — set this once to enable one-click "Fetch Latest NAV" on the NAV Update page, via the free mfapi.in service.</div>
+      </div>
     </div>
     <div class="field" style="margin-top:12px;">
       <label>Labels (optional)</label>
@@ -1412,6 +1448,25 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
       <button class="btn" onclick="closeModal('modal-label')">Cancel</button>
       <button class="btn btn-primary" onclick="saveLabel()">Save label</button>
     </div>
+  </div>
+</div>
+
+<!-- MF Scheme Search Modal -->
+<div class="modal-overlay" id="modal-mf-search">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-head">
+      <h3>Find mutual fund scheme</h3>
+      <button class="icon-btn" onclick="closeModal('modal-mf-search')">✕</button>
+    </div>
+    <div class="field">
+      <label>Fund name</label>
+      <div style="display:flex; gap:8px;">
+        <input type="text" id="mf-search-query" placeholder="e.g. HDFC Flexi Cap, Parag Parikh" onkeydown="if(event.key==='Enter'){event.preventDefault(); runMfSchemeSearch();}">
+        <button type="button" class="btn btn-primary" onclick="runMfSchemeSearch()">Search</button>
+      </div>
+      <div class="field-hint">Searches the free, public <a href="https://www.mfapi.in/" target="_blank" rel="noopener">mfapi.in</a> mutual fund database — no account or API key needed.</div>
+    </div>
+    <div id="mf-search-results" style="max-height:320px; overflow-y:auto; margin-top:10px;"></div>
   </div>
 </div>
 
@@ -1711,16 +1766,19 @@ function ensureAutoBackupSettings(){
 }
 function getExchangeRate(){ ensureSettings(); return state.settings.usdInrRate; }
 function getDisplayCurrency(){ ensureSettings(); return state.settings.displayCurrency; }
-function convertCurrency(amount, fromCurrency, toCurrency){
+function convertCurrency(amount, fromCurrency, toCurrency, rateOverride){
   fromCurrency = fromCurrency || 'INR'; toCurrency = toCurrency || 'INR';
   if (fromCurrency===toCurrency || !isFinite(amount)) return amount;
-  const rate = getExchangeRate();
+  const rate = rateOverride || getExchangeRate();
   if (fromCurrency==='USD' && toCurrency==='INR') return amount*rate;
   if (fromCurrency==='INR' && toCurrency==='USD') return amount/rate;
   return amount;
 }
-function toDisplayCurrency(amount, fromCurrency){
-  return convertCurrency(amount, fromCurrency||'INR', getDisplayCurrency());
+// rateOverride lets a specific transaction supply its own (typically historical, as-of-that-date)
+// USD→INR rate instead of the app's current global rate — used for US stock dividends, where the
+// dividend date's actual rate matters more than today's for accurate INR record-keeping.
+function toDisplayCurrency(amount, fromCurrency, rateOverride){
+  return convertCurrency(amount, fromCurrency||'INR', getDisplayCurrency(), rateOverride);
 }
 
 let currentAccountFilter = 'all'; // 'all' or an account id
@@ -2128,15 +2186,25 @@ function computeHoldings(assetsOverride, asOfDate){
       if ((u===null||u===undefined||u==='') && navp>0 && t.amount) u = t.amount/navp;
       u = Number(u)||0;
 
+      // Most transactions are already in the asset's own currency, but a US stock transaction
+      // can be individually entered directly in INR (e.g. bought via an Indian broker showing
+      // INR pricing) — convert THAT one back to native-currency terms (using its own captured
+      // rate if set, else today's) so it aggregates correctly alongside this asset's other,
+      // natively-priced transactions before the usual native→display conversion happens.
+      let amt = t.amount;
+      if (t.txnCurrency==='INR' && (asset.currency||'INR')!=='INR'){
+        amt = t.amount / (t.fxRateUsed || getExchangeRate());
+      }
+
       switch(t.type){
         case 'buy': case 'purchase': case 'lumpsum': case 'sip': case 'switch_in':
-          units += u; netInvested += t.amount; cashflows.push({date:t.date, amount:-t.amount}); break;
+          units += u; netInvested += amt; cashflows.push({date:t.date, amount:-amt}); break;
         case 'redeem': case 'switch_out':
-          units -= u; netInvested -= t.amount; cashflows.push({date:t.date, amount:t.amount}); break;
+          units -= u; netInvested -= amt; cashflows.push({date:t.date, amount:amt}); break;
         case 'sell':
-          units -= u; netInvested -= t.amount; cashflows.push({date:t.date, amount:t.amount}); break;
+          units -= u; netInvested -= amt; cashflows.push({date:t.date, amount:amt}); break;
         case 'dividend_payout': case 'dividend':
-          cashflows.push({date:t.date, amount:t.amount}); break; // cash out of fund, doesn't change units
+          cashflows.push({date:t.date, amount:amt}); break; // cash out of fund, doesn't change units
         case 'dividend_reinvest':
           units += u; cashflows.push({date:t.date, amount:0}); break; // neutral, reinvested
         case 'bonus':
@@ -2144,7 +2212,7 @@ function computeHoldings(assetsOverride, asOfDate){
         case 'split':
           units *= (t.splitRatio || 1); break; // pure unit-count/price rebase — no cash flow, no change to invested amount
         case 'maturity':
-          matured = true; units = 0; netInvested = 0; cashflows.push({date:t.date, amount:t.amount}); break; // e.g. NPS retirement withdrawal
+          matured = true; units = 0; netInvested = 0; cashflows.push({date:t.date, amount:amt}); break; // e.g. NPS retirement withdrawal
         default: break;
       }
     }
@@ -2609,6 +2677,8 @@ function openTxnModal(existing){
   }
   assetSel.value = existing ? existing.assetId : availableAssets[0].id;
   updateAssetTriggerLabel();
+  document.getElementById('txn-div-currency').value = existing && existing.txnCurrency ? existing.txnCurrency : 'USD';
+  document.getElementById('txn-fx-rate').value = existing && existing.fxRateUsed ? existing.fxRateUsed : '';
   onTxnAssetChange(existing ? existing.type : null);
   document.getElementById('txn-date').value = existing ? existing.date : todayISO();
   document.getElementById('txn-amount').value = existing ? existing.amount : '';
@@ -2617,6 +2687,7 @@ function openTxnModal(existing){
   document.getElementById('txn-rate').value = existing && existing.rate ? existing.rate : '';
   document.getElementById('txn-tenure').value = existing && existing.tenure ? existing.tenure : '';
   document.getElementById('txn-splitratio').value = existing && existing.splitRatio ? existing.splitRatio : '';
+  document.getElementById('txn-tax').value = existing && existing.taxDeducted ? existing.taxDeducted : '';
   if (existing) document.getElementById('txn-type').value = existing.type;
   openModalById('modal-txn');
 }
@@ -2652,6 +2723,8 @@ function onTxnAssetChange(presetType){
 // so Amount (and NAV/price, for a split) don't apply. Layers on top of the asset-type defaults
 // set in onTxnAssetChange, since the same asset can have both regular and corporate-action
 // transactions.
+const TAX_APPLICABLE_TXN_TYPES = ['dividend_payout','dividend_reinvest','dividend','interest_credit'];
+const DIVIDEND_TXN_TYPES = ['dividend','dividend_payout','dividend_reinvest'];
 function onTxnTypeChange(){
   const assetId = document.getElementById('txn-asset').value;
   const asset = getAsset(assetId);
@@ -2660,7 +2733,30 @@ function onTxnTypeChange(){
   const amountField = document.getElementById('txn-amount-field');
   const unitsField = document.getElementById('txn-units-field');
   const navField = document.getElementById('txn-navprice-field');
+  const taxField = document.getElementById('txn-tax-field');
+  const divCurrencyField = document.getElementById('txn-div-currency-field');
   const isUnitless = asset ? UNIT_LESS_TYPES.includes(asset.type) : false;
+
+  const isUsStockDividend = asset && asset.type==='us_stock' && DIVIDEND_TXN_TYPES.includes(type);
+  taxField.style.display = TAX_APPLICABLE_TXN_TYPES.includes(type) ? 'block' : 'none';
+  const taxLabel = document.getElementById('txn-tax-label');
+  const taxHint = document.getElementById('txn-tax-hint');
+  const taxInput = document.getElementById('txn-tax');
+  if (isUsStockDividend){
+    taxLabel.textContent = 'US withholding tax (optional)';
+    taxHint.textContent = 'Enter this in the same currency as "Amount entered in" below. The US (IRS) typically withholds 25% on dividends for Indian residents under the India–US tax treaty, before you receive the rest — tracking it here helps when claiming Foreign Tax Credit (Form 67) against your Indian tax. This is separate from Indian TDS.';
+    taxInput.placeholder = 'e.g. 2.50';
+  } else {
+    taxLabel.textContent = 'Tax deducted / TDS (optional)';
+    taxHint.textContent = 'If tax was withheld before you received this, enter it here — the Income page and FY Report will show gross vs. net amounts.';
+    taxInput.placeholder = 'e.g. 1000';
+  }
+
+  // applies to any US stock transaction that actually involves a cash amount (buy, sell,
+  // dividend, etc.) — split/bonus are non-cash corporate actions with no amount to convert
+  const isUsStockCashTxn = asset && asset.type==='us_stock' && type!=='split' && type!=='bonus';
+  divCurrencyField.style.display = isUsStockCashTxn ? 'block' : 'none';
+  if (isUsStockCashTxn) onDividendCurrencyChange(); else document.getElementById('txn-fx-rate-field').style.display = 'none';
 
   if (type === 'split'){
     splitField.style.display = 'block';
@@ -2699,8 +2795,12 @@ function saveTxn(){
   const navPrice = type==='split' ? null : (parseFloat(document.getElementById('txn-navprice').value) || null);
   const rate = parseFloat(document.getElementById('txn-rate').value) || null;
   const tenure = parseInt(document.getElementById('txn-tenure').value) || null;
+  const taxDeducted = TAX_APPLICABLE_TXN_TYPES.includes(type) ? (parseFloat(document.getElementById('txn-tax').value) || 0) : null;
+  const isUsStockCashTxn = asset.type==='us_stock' && type!=='split' && type!=='bonus';
+  const txnCurrency = isUsStockCashTxn ? document.getElementById('txn-div-currency').value : null;
+  const fxRateUsed = (isUsStockCashTxn && txnCurrency==='USD') ? (parseFloat(document.getElementById('txn-fx-rate').value) || null) : null;
 
-  const txn = { id: id || uid('txn'), assetId, type, date, amount, units, navPrice, rate, tenure, splitRatio };
+  const txn = { id: id || uid('txn'), assetId, type, date, amount, units, navPrice, rate, tenure, splitRatio, taxDeducted, txnCurrency, fxRateUsed };
   const idx = state.transactions.findIndex(t=>t.id===txn.id);
   if (idx>=0) state.transactions[idx] = txn; else state.transactions.push(txn);
   closeModal('modal-txn');
@@ -3644,6 +3744,7 @@ function renderLabelAnalysisPage(){
   }
 }
 
+const MF_ASSET_TYPES = ['equity_mf','debt_mf','hybrid_mf','gold_mf','elss'];
 function onAssetTypeChange(){
   const type = document.getElementById('asset-type').value;
   const isUnitless = UNIT_LESS_TYPES.includes(type);
@@ -3656,6 +3757,7 @@ function onAssetTypeChange(){
   document.getElementById('asset-facevalue-field').style.display = type==='bond' ? 'block' : 'none';
   document.getElementById('asset-coupon-field').style.display = type==='bond' ? 'block' : 'none';
   document.getElementById('asset-nps-tier-field').style.display = type==='nps' ? 'block' : 'none';
+  document.getElementById('asset-amfi-field').style.display = MF_ASSET_TYPES.includes(type) ? 'block' : 'none';
 
   // default currency by type, only auto-set if the field hasn't been hand-edited for this open
   const curSel = document.getElementById('asset-currency');
@@ -3721,6 +3823,7 @@ function openAssetModal(existing){
   document.getElementById('asset-facevalue').value = existing && existing.faceValue ? existing.faceValue : '';
   document.getElementById('asset-coupon').value = existing && existing.couponRate ? existing.couponRate : '';
   document.getElementById('asset-nps-tier').value = existing && existing.npsTier ? existing.npsTier : 'tier1';
+  document.getElementById('asset-amfi-code').value = existing && existing.amfiCode ? existing.amfiCode : '';
   currentAssetLabels = existing && existing.labels ? [...existing.labels] : [];
   document.getElementById('asset-labels-input').value = '';
   populateLabelDatalist();
@@ -3756,13 +3859,14 @@ function saveAsset(){
   const faceValue = parseFloat(document.getElementById('asset-facevalue').value) || null;
   const couponRate = parseFloat(document.getElementById('asset-coupon').value) || null;
   const npsTier = document.getElementById('asset-nps-tier').value || 'tier1';
+  const amfiCode = document.getElementById('asset-amfi-code').value.trim() || null;
   const accountId = document.getElementById('asset-account').value;
   const currency = document.getElementById('asset-currency').value || 'INR';
   if (!name){ showToast('Name is required'); return; }
   // catch a label still sitting in the input box that the person didn't press Enter on
   const strayLabel = document.getElementById('asset-labels-input').value.trim();
   if (strayLabel) addAssetLabel(strayLabel);
-  const asset = { id: id||uid('asset'), name, type, nav, faceValue, couponRate, npsTier, accountId, currency, labels: currentAssetLabels.slice() };
+  const asset = { id: id||uid('asset'), name, type, nav, faceValue, couponRate, npsTier, amfiCode, accountId, currency, labels: currentAssetLabels.slice() };
   const idx = state.assets.findIndex(a=>a.id===asset.id);
   if (idx>=0) state.assets[idx] = {...state.assets[idx], ...asset}; else state.assets.push(asset);
   closeModal('modal-asset');
@@ -3792,9 +3896,16 @@ function computeIncomeEvents(){
       else incomeType = 'Interest';
     }
     if (!incomeType) continue;
-    const amt = toDisplayCurrency(Number(t.amount)||0, asset.currency||'INR');
+    // A specific transaction can override both the currency it was entered in and the USD→INR
+    // rate used (typically a historical, as-of-that-date rate) — currently only offered for US
+    // stock dividends, where the actual dividend date's rate matters for accurate record-keeping.
+    const txnCurrency = t.txnCurrency || asset.currency || 'INR';
+    const rateOverride = (txnCurrency==='USD' && t.fxRateUsed) ? t.fxRateUsed : null;
+    const amt = toDisplayCurrency(Number(t.amount)||0, txnCurrency, rateOverride);
     if (amt === 0) continue;
-    events.push({ date:t.date, assetName: asset.name, assetType: asset.type, incomeType, amount: amt });
+    const tax = toDisplayCurrency(Number(t.taxDeducted)||0, txnCurrency, rateOverride);
+    const isUsWithholding = asset.type==='us_stock' && DIVIDEND_TXN_TYPES.includes(t.type) && tax>0;
+    events.push({ date:t.date, assetName: asset.name, assetType: asset.type, incomeType, amount: amt, taxDeducted: tax, grossAmount: amt+tax, isUsWithholding });
   }
   return events.sort((a,b)=>new Date(b.date)-new Date(a.date));
 }
@@ -3840,11 +3951,16 @@ function renderIncomePage(){
   const totalThisFy = events.filter(e=>e.date>=curFyBounds.startDate && e.date<=curFyBounds.endDate).reduce((s,e)=>s+e.amount,0);
   const totalInterest = events.filter(e=>e.incomeType.startsWith('Interest')).reduce((s,e)=>s+e.amount,0);
   const totalDividend = events.filter(e=>e.incomeType.startsWith('Dividend')).reduce((s,e)=>s+e.amount,0);
+  const totalTaxAll = events.reduce((s,e)=>s+(e.taxDeducted||0),0);
+  const totalTaxThisFy = events.filter(e=>e.date>=curFyBounds.startDate && e.date<=curFyBounds.endDate).reduce((s,e)=>s+(e.taxDeducted||0),0);
+  const usWithholdingTax = events.reduce((s,e)=>s+(e.isUsWithholding?e.taxDeducted:0),0);
+  const indianTdsTax = totalTaxAll - usWithholdingTax;
 
   document.getElementById('income-stats').innerHTML = `
-    <div class="card"><div class="card-title">Total Income (all time)</div><div class="stat-value pos">${fmtMoney(totalAll)}</div><div class="stat-sub">Interest + dividends received</div></div>
+    <div class="card"><div class="card-title">Total Income (all time)</div><div class="stat-value pos">${fmtMoney(totalAll)}</div><div class="stat-sub">Interest + dividends received (net of tax)</div></div>
     <div class="card"><div class="card-title">${curFyBounds.label} (current)</div><div class="stat-value">${fmtMoney(totalThisFy)}</div><div class="stat-sub">Financial-year-to-date income</div></div>
     <div class="card"><div class="card-title">Interest vs Dividend</div><div class="stat-value" style="font-size:16px;"><span style="color:var(--debt)">${fmtMoney(totalInterest)}</span> &nbsp;/&nbsp; <span style="color:var(--hybrid)">${fmtMoney(totalDividend)}</span></div><div class="stat-sub">Interest (bonds/FDs) / Dividends (MFs/stocks)</div></div>
+    <div class="card"><div class="card-title">Tax Deducted</div><div class="stat-value neg">${fmtMoney(totalTaxAll)}</div><div class="stat-sub">Indian TDS: ${fmtMoney(indianTdsTax)}${usWithholdingTax>0?` · US withholding: ${fmtMoney(usWithholdingTax)} (Form 67 / FTC)`:''}</div></div>
   `;
 
   // Dividend & Interest by Financial Year (grouped bar)
@@ -3928,13 +4044,15 @@ function renderIncomePage(){
   if (events.length===0){
     tblEl.innerHTML = emptyState('No interest or dividend income recorded', 'Add an "Interest (Coupon)" transaction on a bond, an "Interest Credit" on an FD, or a "Dividend" transaction on a mutual fund or stock.');
   } else {
-    tblEl.innerHTML = `<table><thead><tr>${sTh('income-table',0,'Date')}${sTh('income-table',1,'Asset')}${sTh('income-table',2,'Type')}${sTh('income-table',3,'Income Type')}${sTh('income-table',4,'Amount')}</tr></thead><tbody>
+    tblEl.innerHTML = `<table><thead><tr>${sTh('income-table',0,'Date')}${sTh('income-table',1,'Asset')}${sTh('income-table',2,'Type')}${sTh('income-table',3,'Income Type')}${sTh('income-table',4,'Net Amount')}${sTh('income-table',5,'Tax Deducted')}${sTh('income-table',6,'Gross Amount')}</tr></thead><tbody>
       ${events.map(e=>`<tr>
         <td data-sort="${e.date}">${fmtDate(e.date)}</td>
         <td data-sort="${e.assetName.toLowerCase()}">${e.assetName}</td>
         <td data-sort="${ASSET_TYPE_LABELS[e.assetType]}"><span class="badge ${ASSET_TYPE_BADGE[e.assetType]}">${ASSET_TYPE_LABELS[e.assetType]}</span></td>
         <td data-sort="${e.incomeType}"><span class="badge ${e.incomeType.startsWith('Interest')?'badge-income-interest':'badge-income-dividend'}">${e.incomeType}</span></td>
         <td data-sort="${e.amount}" class="pos">+${fmtMoney(e.amount)}</td>
+        <td data-sort="${e.taxDeducted||0}">${e.taxDeducted>0?fmtMoney(e.taxDeducted):'—'}${e.isUsWithholding?'<div class="fx-hint">US withholding</div>':''}</td>
+        <td data-sort="${e.grossAmount}">${e.taxDeducted>0?fmtMoney(e.grossAmount):'—'}</td>
       </tr>`).join('')}
     </tbody></table>`;
   }
@@ -3989,7 +4107,13 @@ function computeRealizedGainsFIFO(assets, startDate, endDate){
       let u = t.units;
       if ((u===null||u===undefined||u==='') && navp>0 && t.amount) u = t.amount/navp;
       u = Number(u)||0;
-      const amtDisp = toDisplayCurrency(t.amount, cur);
+      // A US stock transaction can be individually entered in a different currency than the
+      // asset's default (e.g. INR via an Indian broker, or USD with its own historical rate) —
+      // use that transaction's own currency/rate rather than assuming every transaction matches
+      // the asset's native currency, which would otherwise silently misinterpret the amount.
+      const actualCurrency = t.txnCurrency || cur;
+      const rateOverride = (actualCurrency==='USD' && t.fxRateUsed) ? t.fxRateUsed : null;
+      const amtDisp = toDisplayCurrency(t.amount, actualCurrency, rateOverride);
 
       if (INVEST_TXN_TYPES.includes(t.type) && t.type!=='deposit'){
         const costPerUnit = u>0 ? amtDisp/u : 0;
@@ -4090,10 +4214,11 @@ function computeFYReport(fyStartYear){
   const totalRealizedGain = capGains.reduce((s,c)=>s+c.gain,0);
 
   const incomeEvents = computeIncomeEvents().filter(e=>e.date>=startDate && e.date<=effectiveEnd);
+  const totalTaxDeducted = incomeEvents.reduce((s,e)=>s+(e.taxDeducted||0),0);
   const txnLog = state.transactions.filter(t=>filteredAssetIds.has(t.assetId) && t.date>=startDate && t.date<=effectiveEnd).sort((a,b)=>new Date(a.date)-new Date(b.date));
 
   return { label, startDate, endDate, effectiveEnd, rows, totalOpening, totalClosing, totalInvested, totalWithdrawn,
-    totalIncome, totalGain, periodXirr, capGains, totalRealizedGain, incomeEvents, txnLog };
+    totalIncome, totalGain, periodXirr, capGains, totalRealizedGain, incomeEvents, totalTaxDeducted, txnLog };
 }
 
 let currentFyReport = null;
@@ -4170,13 +4295,15 @@ function renderFyReportPage(){
   if (report.incomeEvents.length===0){
     incEl.innerHTML = emptyState('No income this year', 'Interest and dividend transactions in this period will appear here.');
   } else {
-    incEl.innerHTML = `<table><thead><tr>${sTh('fy-income-table',0,'Date')}${sTh('fy-income-table',1,'Asset')}${sTh('fy-income-table',2,'Income Type')}${sTh('fy-income-table',3,'Amount')}</tr></thead><tbody>
+    incEl.innerHTML = `<table><thead><tr>${sTh('fy-income-table',0,'Date')}${sTh('fy-income-table',1,'Asset')}${sTh('fy-income-table',2,'Income Type')}${sTh('fy-income-table',3,'Net Amount')}${sTh('fy-income-table',4,'Tax Deducted')}${sTh('fy-income-table',5,'Gross Amount')}</tr></thead><tbody>
       ${report.incomeEvents.map(e=>`<tr>
         <td data-sort="${e.date}">${fmtDate(e.date)}</td><td data-sort="${e.assetName.toLowerCase()}">${e.assetName}</td>
         <td data-sort="${e.incomeType}"><span class="badge ${e.incomeType.startsWith('Interest')?'badge-income-interest':'badge-income-dividend'}">${e.incomeType}</span></td>
         <td data-sort="${e.amount}" class="pos">+${fmtMoney(e.amount)}</td>
+        <td data-sort="${e.taxDeducted||0}">${e.taxDeducted>0?fmtMoney(e.taxDeducted):'—'}</td>
+        <td data-sort="${e.grossAmount}">${e.taxDeducted>0?fmtMoney(e.grossAmount):'—'}</td>
       </tr>`).join('')}
-      <tr class="summary-row" style="font-weight:700;"><td colspan="3">Total</td><td class="pos">${fmtMoney(report.totalIncome)}</td></tr>
+      <tr class="summary-row" style="font-weight:700;"><td colspan="3">Total</td><td class="pos">${fmtMoney(report.totalIncome)}</td><td>${fmtMoney(report.totalTaxDeducted)}</td><td>${fmtMoney(report.totalIncome+report.totalTaxDeducted)}</td></tr>
     </tbody></table>`;
   }
 
@@ -4308,12 +4435,18 @@ function renderNavUpdatePage(){
   const relevant = getFilteredAssets().filter(a=>!UNIT_LESS_TYPES.includes(a.type));
   if (relevant.length===0){ el.innerHTML = emptyState('No priced assets', 'Mutual funds, stocks, bonds and gold appear here for manual price updates.'); return; }
   el.innerHTML = `<table><thead><tr>${sTh('nav-update-table',0,'Asset')}${sTh('nav-update-table',1,'Currency')}${sTh('nav-update-table',2,'Current value')}<th>New value</th><th></th></tr></thead><tbody>
-    ${relevant.map(a=>{ const sym = CURRENCY_SYMBOLS[a.currency||'INR']||'₹'; return `<tr>
-      <td data-sort="${a.name.toLowerCase()}">${a.name}</td>
+    ${relevant.map(a=>{
+      const sym = CURRENCY_SYMBOLS[a.currency||'INR']||'₹';
+      const canFetch = MF_ASSET_TYPES.includes(a.type) && a.amfiCode;
+      return `<tr>
+      <td data-sort="${a.name.toLowerCase()}">${a.name}${canFetch?`<div class="fx-hint">AMFI: ${a.amfiCode}</div>`:''}</td>
       <td data-sort="${a.currency||'INR'}">${a.currency||'INR'}</td>
       <td data-sort="${a.nav||0}">${sym}${fmtNum(a.nav,4)}</td>
       <td><input type="number" step="0.0001" style="width:110px; padding:6px 8px; border-radius:6px; border:1px solid var(--card-border); background:var(--bg-soft); color:var(--text);" id="navinput-${a.id}" placeholder="${fmtNum(a.nav,4)}"></td>
-      <td><button class="btn btn-sm btn-primary" onclick="updateSingleNav('${a.id}')">Update</button></td>
+      <td style="white-space:nowrap;">
+        <button class="btn btn-sm btn-primary" onclick="updateSingleNav('${a.id}')">Update</button>
+        ${canFetch?`<button class="btn btn-sm" onclick="fetchLatestNavForAsset('${a.id}')" title="Fetch latest NAV from mfapi.in">🔄 Fetch</button>`:''}
+      </td>
     </tr>`; }).join('')}
   </tbody></table>`;
   applyStoredFilter('nav-update-table');
@@ -4342,6 +4475,90 @@ function applyNavAllUpload(){
   showToast(`Updated ${updated} asset(s), ${notFound} not matched`);
   document.getElementById('navall-input').value='';
   renderAll();
+}
+
+/* ==========================================================================
+   LIVE NAV FETCHING (mutual funds only) — via mfapi.in, a free, public,
+   no-auth-required API for Indian mutual fund data. Scoped deliberately to
+   mutual funds: "NAV" is mutual-fund-specific terminology, and there isn't
+   a similarly reliable, CORS-friendly, free public API for live stock or
+   gold prices to build this on top of without an account/API key — rather
+   than ship something likely to break silently, this covers the case that
+   actually works well.
+   ========================================================================== */
+const MFAPI_BASE = 'https://api.mfapi.in/mf';
+
+function openMfSchemeSearch(){
+  document.getElementById('mf-search-query').value = document.getElementById('asset-name').value || '';
+  document.getElementById('mf-search-results').innerHTML = '';
+  openModalById('modal-mf-search');
+  setTimeout(()=>document.getElementById('mf-search-query').focus(), 50);
+  if (document.getElementById('mf-search-query').value.trim()) runMfSchemeSearch();
+}
+async function runMfSchemeSearch(){
+  const query = document.getElementById('mf-search-query').value.trim();
+  const resultsEl = document.getElementById('mf-search-results');
+  if (!query){ showToast('Type a fund name to search'); return; }
+  resultsEl.innerHTML = `<div class="fx-hint">Searching…</div>`;
+  try{
+    const res = await fetch(`${MFAPI_BASE}/search?q=${encodeURIComponent(query)}`);
+    if (!res.ok) throw new Error('Search failed: '+res.status);
+    const results = await res.json();
+    if (!Array.isArray(results) || results.length===0){
+      resultsEl.innerHTML = `<div class="fx-hint">No matching schemes found. Try a shorter or differently-worded name (e.g. just the fund house — "HDFC", "Parag Parikh").</div>`;
+      return;
+    }
+    resultsEl.innerHTML = results.slice(0,40).map(r=>
+      `<div class="mf-search-result" onclick="selectMfScheme('${r.schemeCode}', '${String(r.schemeName).replace(/'/g,"\\'")}')">
+        ${r.schemeName}<div class="scheme-code">Scheme code: ${r.schemeCode}</div>
+      </div>`
+    ).join('');
+  }catch(err){
+    console.error('MF scheme search failed', err);
+    resultsEl.innerHTML = `<div class="fx-hint">Search failed — check your internet connection. (mfapi.in may also be temporarily unreachable.)</div>`;
+  }
+}
+function selectMfScheme(code, name){
+  document.getElementById('asset-amfi-code').value = code;
+  if (!document.getElementById('asset-name').value.trim()) document.getElementById('asset-name').value = name;
+  closeModal('modal-mf-search');
+  showToast('Scheme code linked — use "Fetch Latest NAV" on the NAV Update page anytime after saving.');
+}
+
+// Fetches and applies the latest NAV for one asset. Returns true/false so bulk-fetch can tally results.
+async function fetchLatestNavForAsset(assetId){
+  const asset = getAsset(assetId);
+  if (!asset || !asset.amfiCode){ showToast('This asset has no AMFI scheme code set — edit it and use "Find scheme" first'); return false; }
+  try{
+    const res = await fetch(`${MFAPI_BASE}/${encodeURIComponent(asset.amfiCode)}/latest`);
+    if (!res.ok) throw new Error('Fetch failed: '+res.status);
+    const data = await res.json();
+    if (data.status !== 'SUCCESS' || !data.data || !data.data[0]){
+      showToast(`${asset.name}: no NAV data returned — double check the scheme code`);
+      return false;
+    }
+    const nav = parseFloat(data.data[0].nav);
+    if (isNaN(nav) || nav<=0){ showToast(`${asset.name}: invalid NAV in response`); return false; }
+    asset.nav = nav;
+    showToast(`${asset.name} updated to ₹${fmtNum(nav,4)} (as of ${data.data[0].date})`);
+    renderAll();
+    return true;
+  }catch(err){
+    console.error('Live NAV fetch failed for', asset.name, err);
+    showToast(`${asset.name}: fetch failed — check your internet connection`);
+    return false;
+  }
+}
+async function fetchAllLatestNavs(){
+  const eligible = state.assets.filter(a=>MF_ASSET_TYPES.includes(a.type) && a.amfiCode);
+  if (eligible.length===0){ showToast('No assets have an AMFI scheme code set yet — edit an asset and use "Find scheme"'); return; }
+  showToast(`Fetching latest NAV for ${eligible.length} fund(s)…`);
+  let ok = 0;
+  for(const a of eligible){
+    const success = await fetchLatestNavForAsset(a.id);
+    if (success) ok++;
+  }
+  showToast(`Done — updated ${ok} of ${eligible.length} fund(s) from mfapi.in`);
 }
 
 /* ==========================================================================
@@ -5359,6 +5576,34 @@ async function fetchLatestFxRate(){
     showToast("Couldn't fetch a live rate (offline, or both providers are unreachable) — you can still enter it manually");
   }
   if (btn){ btn.disabled = false; btn.textContent = '🔄 Fetch latest rate'; }
+}
+
+// Shows/hides the historical FX rate field based on whether the dividend was entered in USD
+// (needs a rate to convert) or INR (already in the target currency, no conversion needed).
+function onDividendCurrencyChange(){
+  const currency = document.getElementById('txn-div-currency').value;
+  document.getElementById('txn-fx-rate-field').style.display = currency==='USD' ? 'block' : 'none';
+}
+// Fetches the actual USD→INR rate for the transaction's own date (not today's rate) via
+// frankfurter.app's historical endpoint — same free, no-auth ECB-sourced service used for the
+// live rate elsewhere in Settings, just queried for a specific past date instead of "latest".
+async function fetchHistoricalFxRateForTxn(btn){
+  const date = document.getElementById('txn-date').value;
+  if (!date){ showToast('Pick a transaction date first'); return; }
+  if (date > todayISO()){ showToast('Pick a date that has already happened'); return; }
+  if (btn){ btn.disabled = true; btn.textContent = 'Fetching…'; }
+  try{
+    const res = await fetch(`https://api.frankfurter.app/${date}?from=USD&to=INR`);
+    if (!res.ok) throw new Error('Request failed: '+res.status);
+    const data = await res.json();
+    if (!data.rates || !data.rates.INR) throw new Error('Unexpected response format');
+    document.getElementById('txn-fx-rate').value = data.rates.INR;
+    showToast(`Rate for ${fmtDate(date)}: 1 USD = ₹${fmtNum(data.rates.INR,4)}${data.date!==date?` (nearest available trading day: ${data.date})`:''}`);
+  }catch(err){
+    console.error('Historical FX rate fetch failed', err);
+    showToast("Couldn't fetch the historical rate — check your internet connection, or enter it manually");
+  }
+  if (btn){ btn.disabled = false; btn.textContent = '🔄 Fetch rate'; }
 }
 
 function setAutoFetchFx(on){
