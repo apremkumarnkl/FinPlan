@@ -617,6 +617,8 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
         </div>
       </div>
 
+      <div class="card" id="interest-alerts-box" style="display:none; margin-bottom:16px;"></div>
+
       <div class="grid grid-4" id="dashboard-stats"></div>
 
       <div class="two-col" style="margin-top:16px;">
@@ -1309,15 +1311,15 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
       </div>
       <div class="field" id="txn-amount-field">
         <label id="txn-amount-label">Amount (₹)</label>
-        <input type="number" id="txn-amount" step="0.01" placeholder="e.g. 10000">
+        <input type="number" id="txn-amount" step="0.01" placeholder="e.g. 10000" oninput="autoCalcPricePerUnit()">
       </div>
       <div class="field" id="txn-units-field">
         <label id="txn-units-label">Units</label>
-        <input type="number" id="txn-units" step="0.0001" placeholder="auto if NAV known">
+        <input type="number" id="txn-units" step="0.0001" placeholder="auto if NAV known" oninput="autoCalcPricePerUnit()">
       </div>
       <div class="field" id="txn-navprice-field">
         <label id="txn-navprice-label">NAV / Price</label>
-        <input type="number" id="txn-navprice" step="0.0001">
+        <input type="number" id="txn-navprice" step="0.0001" onfocus="this.dataset.userTouched='1'">
       </div>
       <div class="field" id="txn-rate-field" style="display:none;">
         <label>Interest rate % p.a.</label>
@@ -1419,6 +1421,27 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
       <div class="field" id="asset-coupon-field" style="display:none;">
         <label>Coupon rate % p.a. (optional — for reference)</label>
         <input type="number" id="asset-coupon" step="0.01" placeholder="e.g. 9.25">
+      </div>
+      <div class="field" id="asset-maturity-date-field" style="display:none;">
+        <label>Maturity date (optional)</label>
+        <input type="date" id="asset-maturity-date">
+        <div class="field-hint">When the principal is expected to be repaid — shown on the Assets table and used to flag maturities coming up soon. If left blank for an FD, it's derived automatically from your deposit's tenure instead.</div>
+      </div>
+      <div class="field" id="asset-interest-freq-field" style="display:none;">
+        <label>Interest payment frequency (optional)</label>
+        <select id="asset-interest-freq">
+          <option value="">None (cumulative — interest only at maturity)</option>
+          <option value="annual">Annual</option>
+          <option value="halfyearly">Half-Yearly</option>
+          <option value="quarterly">Quarterly</option>
+          <option value="monthly">Monthly</option>
+        </select>
+        <div class="field-hint">For a bond: used to estimate the next coupon due date, together with the payment date below. For an FD: only set this if it pays interest out periodically (non-cumulative) — leave it unset for the common cumulative FD, where interest just compounds internally until maturity with nothing to track in between.</div>
+      </div>
+      <div class="field" id="asset-interest-payment-date-field" style="display:none;">
+        <label>A known interest payment date (optional)</label>
+        <input type="date" id="asset-interest-payment-date">
+        <div class="field-hint">Any one actual/scheduled interest date (past or future) — used as the fixed reference point to project the next one accurately, instead of guessing. Leave blank to fall back to your last logged "Interest Credit" transaction, or the deposit date if you haven't logged one yet.</div>
       </div>
       <div class="field" id="asset-nav-field">
         <label id="asset-nav-label">Current NAV / Price</label>
@@ -2725,6 +2748,7 @@ document.addEventListener('keydown', (e)=>{
 function openTxnModal(existing){
   document.getElementById('txn-modal-title').textContent = existing ? 'Edit transaction' : 'Add transaction';
   document.getElementById('txn-id').value = existing ? existing.id : '';
+  delete document.getElementById('txn-navprice').dataset.userTouched; // fresh slate for auto-calc each time the modal opens
   toggleAssetDropdown(false);
   const assetSel = document.getElementById('txn-asset');
   populateAssetSelect(assetSel);
@@ -2783,6 +2807,23 @@ function onTxnAssetChange(presetType){
 // transactions.
 const TAX_APPLICABLE_TXN_TYPES = ['dividend_payout','dividend_reinvest','dividend','interest_credit'];
 const DIVIDEND_TXN_TYPES = ['dividend','dividend_payout','dividend_reinvest'];
+// Auto-calculates Price per Unit (NAV/Price) as Amount ÷ Units for stock transactions, live as
+// either field is typed — since for a stock trade you naturally know the total amount and the
+// number of shares, but the exact per-share price is just their ratio, not something you'd
+// otherwise look up separately. Backs off the moment someone clicks into NAV/Price and types
+// there directly, so a manual entry is never silently overwritten.
+function autoCalcPricePerUnit(){
+  const assetId = document.getElementById('txn-asset').value;
+  const asset = getAsset(assetId);
+  if (!asset || (asset.type!=='stock' && asset.type!=='us_stock')) return;
+  const navField = document.getElementById('txn-navprice');
+  if (navField.dataset.userTouched) return; // respect a manual entry
+  const amount = parseFloat(document.getElementById('txn-amount').value);
+  const units = parseFloat(document.getElementById('txn-units').value);
+  if (!isNaN(amount) && !isNaN(units) && units>0){
+    navField.value = (amount/units).toFixed(4);
+  }
+}
 function onTxnTypeChange(){
   const assetId = document.getElementById('txn-asset').value;
   const asset = getAsset(assetId);
@@ -2861,6 +2902,22 @@ function saveTxn(){
   const txn = { id: id || uid('txn'), assetId, type, date, amount, units, navPrice, rate, tenure, splitRatio, taxDeducted, txnCurrency, fxRateUsed };
   const idx = state.transactions.findIndex(t=>t.id===txn.id);
   if (idx>=0) state.transactions[idx] = txn; else state.transactions.push(txn);
+
+  // Once a bond's interest payment (or an FD's, if it's a non-cumulative one tracking periodic
+  // interest) for the CURRENT month is logged, advance the tracked "interest payment date"
+  // forward to the next period automatically — so the Assets table's "next interest due" keeps
+  // rolling forward on its own as real payments come in, without needing to go edit the asset by
+  // hand each time. Scoped to the current month specifically so backfilling old historical
+  // payments doesn't jump the schedule around unexpectedly.
+  if ((asset.type==='bond' || (asset.type==='fd' && asset.interestFrequency)) && type==='interest_credit' && date.slice(0,7)===todayISO().slice(0,7)){
+    const perYear = PREMIUM_FREQ_PER_YEAR[asset.interestFrequency] || 1;
+    const monthsPerPeriod = 12/perYear;
+    const priorAnchor = asset.interestPaymentDate || date;
+    let next = addMonths(priorAnchor, monthsPerPeriod);
+    while (next <= date) next = addMonths(next, monthsPerPeriod); // guard against an already-stale anchor
+    asset.interestPaymentDate = next;
+  }
+
   closeModal('modal-txn');
   showToast('Transaction saved');
   renderAll();
@@ -3251,6 +3308,273 @@ function computeInsurancePlan(ins){
   return { totalPaid, lastPaidDate, nextDueDate, daysToDue, isOverdue, isDueSoon, maturityDate, annualPremium };
 }
 
+// Bond maturity + next-interest-due tracking — mirrors the same pattern as insurance premiums:
+// estimates the next coupon date from the last logged "Interest (Coupon)" transaction (or the
+// purchase date if none yet) plus the chosen frequency, and flags bonds nearing/at maturity.
+function computeBondSchedule(asset){
+  if (asset.type!=='bond') return null;
+  const perYear = PREMIUM_FREQ_PER_YEAR[asset.interestFrequency] || 1;
+  const monthsPerPeriod = 12/perYear;
+  let nextInterestDue = null;
+
+  if (asset.interestPaymentDate && asset.interestFrequency){
+    // Treat the anchor as any single point on the bond's payment schedule — past (a payment
+    // already made, including one logged today) or future (a scheduled date you already know) —
+    // and find the SMALLEST schedule date that's still strictly ahead of today. Advance forward
+    // if the anchor (or today) has already passed; if the anchor was already further out than
+    // necessary, step back to the nearest one that's still upcoming, so a payment logged today
+    // correctly projects one full period ahead rather than showing today itself as "next due".
+    let candidate = asset.interestPaymentDate;
+    let guard = 0;
+    while (candidate <= todayISO() && guard < 2000){
+      candidate = addMonths(candidate, monthsPerPeriod);
+      guard++;
+    }
+    guard = 0;
+    while (guard < 2000){
+      const earlier = addMonths(candidate, -monthsPerPeriod);
+      if (earlier > todayISO()){ candidate = earlier; guard++; } else break;
+    }
+    nextInterestDue = candidate;
+  } else {
+    // Fall back to estimating from the last logged "Interest (Coupon)" transaction, or the
+    // purchase date if none has been logged yet.
+    const interestTxns = state.transactions.filter(t=>t.assetId===asset.id && t.type==='interest_credit').sort((a,b)=>new Date(b.date)-new Date(a.date));
+    const purchaseTxns = state.transactions.filter(t=>t.assetId===asset.id && t.type==='buy').sort((a,b)=>new Date(a.date)-new Date(b.date));
+    const lastInterestDate = interestTxns.length ? interestTxns[0].date : null;
+    const anchorDate = lastInterestDate || (purchaseTxns.length ? purchaseTxns[0].date : null);
+    nextInterestDue = (anchorDate && asset.interestFrequency) ? addMonths(anchorDate, monthsPerPeriod) : null;
+  }
+
+  const daysToNextInterest = nextInterestDue ? Math.round(daysBetween(todayISO(), nextInterestDue)) : null;
+  const interestOverdue = daysToNextInterest!==null && daysToNextInterest < 0;
+  const interestDueSoon = daysToNextInterest!==null && daysToNextInterest >= 0 && daysToNextInterest <= 30;
+  const daysToMaturity = asset.maturityDate ? Math.round(daysBetween(todayISO(), asset.maturityDate)) : null;
+  const maturityOverdue = daysToMaturity!==null && daysToMaturity < 0; // matured but no maturity transaction logged yet
+  const maturitySoon = daysToMaturity!==null && daysToMaturity >= 0 && daysToMaturity <= 60;
+  return { nextInterestDue, daysToNextInterest, interestOverdue, interestDueSoon, daysToMaturity, maturityOverdue, maturitySoon };
+}
+
+// FD is like a bond for periodic-interest tracking (only relevant for non-cumulative FDs that
+// pay interest out periodically — most Indian FDs are cumulative and simply won't have an
+// interestFrequency set, so this naturally no-ops for them), but like RD for maturity: if no
+// explicit maturityDate is set, derive it the same way RD does — from the first deposit's date
+// plus its logged tenure.
+function computeFdSchedule(asset){
+  if (asset.type!=='fd') return null;
+  const deposits = state.transactions.filter(t=>t.assetId===asset.id && t.type==='deposit').sort((a,b)=>new Date(a.date)-new Date(b.date));
+  const maturityDate = asset.maturityDate || (deposits.length && deposits[0].tenure ? addMonths(deposits[0].date, deposits[0].tenure) : null);
+
+  let nextInterestDue = null;
+  if (asset.interestFrequency){
+    const perYear = PREMIUM_FREQ_PER_YEAR[asset.interestFrequency] || 1;
+    const monthsPerPeriod = 12/perYear;
+    if (asset.interestPaymentDate){
+      let candidate = asset.interestPaymentDate;
+      let guard = 0;
+      while (candidate <= todayISO() && guard < 2000){ candidate = addMonths(candidate, monthsPerPeriod); guard++; }
+      guard = 0;
+      while (guard < 2000){
+        const earlier = addMonths(candidate, -monthsPerPeriod);
+        if (earlier > todayISO()){ candidate = earlier; guard++; } else break;
+      }
+      nextInterestDue = candidate;
+    } else {
+      const interestTxns = state.transactions.filter(t=>t.assetId===asset.id && t.type==='interest_credit').sort((a,b)=>new Date(b.date)-new Date(a.date));
+      const anchorDate = interestTxns.length ? interestTxns[0].date : (deposits.length ? deposits[0].date : null);
+      nextInterestDue = anchorDate ? addMonths(anchorDate, monthsPerPeriod) : null;
+    }
+    // an FD's periodic interest never continues past its own maturity
+    if (nextInterestDue && maturityDate && nextInterestDue >= maturityDate) nextInterestDue = null;
+  }
+
+  const daysToNextInterest = nextInterestDue ? Math.round(daysBetween(todayISO(), nextInterestDue)) : null;
+  const interestOverdue = daysToNextInterest!==null && daysToNextInterest < 0;
+  const interestDueSoon = daysToNextInterest!==null && daysToNextInterest >= 0 && daysToNextInterest <= 30;
+  const daysToMaturity = maturityDate ? Math.round(daysBetween(todayISO(), maturityDate)) : null;
+  const maturedByTxn = state.transactions.some(t=>t.assetId===asset.id && (t.type==='maturity' || t.type==='premature_close'));
+  const maturityOverdue = !maturedByTxn && daysToMaturity!==null && daysToMaturity < 0; // matured but no maturity transaction logged yet
+  const maturitySoon = daysToMaturity!==null && daysToMaturity >= 0 && daysToMaturity <= 30;
+  return { maturityDate, nextInterestDue, daysToNextInterest, interestOverdue, interestDueSoon, daysToMaturity, maturityOverdue, maturitySoon, maturedByTxn };
+}
+
+/* ==========================================================================
+   UPCOMING INTEREST PAYMENT ALERTS & NOTIFICATIONS
+   ========================================================================== */
+// RD's recurring obligation is the monthly DEPOSIT, not a periodic interest payout (interest
+// compounds internally and is only paid out at maturity) — so what's worth tracking here is the
+// next deposit due date, and — importantly — that tracking should stop once the RD has actually
+// matured, since there's nothing left to deposit after that.
+function computeRdSchedule(asset){
+  if (asset.type!=='rd') return null;
+  const deposits = state.transactions.filter(t=>t.assetId===asset.id && t.type==='deposit').sort((a,b)=>new Date(a.date)-new Date(b.date));
+  if (deposits.length===0) return null; // nothing deposited yet — no schedule to project
+  const firstDeposit = deposits[0];
+  const maturityDate = firstDeposit.tenure ? addMonths(firstDeposit.date, firstDeposit.tenure) : null;
+  const alreadyMatured = maturityDate ? todayISO() >= maturityDate : false;
+  const maturedByTxn = state.transactions.some(t=>t.assetId===asset.id && (t.type==='maturity' || t.type==='premature_close'));
+  if (alreadyMatured || maturedByTxn){
+    return { matured: true, maturityDate, nextDepositDue: null, daysToNextDeposit: null, isOverdue: false, isDueSoon: false };
+  }
+  const lastDeposit = deposits[deposits.length-1];
+  let nextDepositDue = addMonths(lastDeposit.date, 1);
+  if (maturityDate && nextDepositDue >= maturityDate){
+    // the next monthly slot would fall on/after maturity — no further deposit is actually due
+    return { matured: false, maturityDate, nextDepositDue: null, daysToNextDeposit: null, isOverdue: false, isDueSoon: false, lastDepositBeforeMaturity: true };
+  }
+  const daysToNextDeposit = Math.round(daysBetween(todayISO(), nextDepositDue));
+  const isOverdue = daysToNextDeposit < 0;
+  const isDueSoon = daysToNextDeposit >= 0 && daysToNextDeposit <= 5; // a monthly cadence needs a tighter "soon" window than a bond's
+  return { matured: false, maturityDate, nextDepositDue, daysToNextDeposit, isOverdue, isDueSoon };
+}
+
+// Gathers every bond due/overdue for interest AND every RD due/overdue for its monthly deposit
+// (stopping automatically once an RD matures), with an estimated amount where possible.
+function computeUpcomingInterestAlerts(){
+  const alerts = [];
+  for(const asset of state.assets){
+    if (asset.type==='bond'){
+      const sched = computeBondSchedule(asset);
+      if (!sched || !(sched.interestDueSoon || sched.interestOverdue)) continue;
+      let expectedAmount = null;
+      if (asset.faceValue && asset.couponRate){
+        const perYear = PREMIUM_FREQ_PER_YEAR[asset.interestFrequency] || 1;
+        expectedAmount = asset.faceValue * asset.couponRate/100 / perYear;
+      } else {
+        const lastInterestTxn = state.transactions.filter(t=>t.assetId===asset.id && t.type==='interest_credit').sort((a,b)=>new Date(b.date)-new Date(a.date))[0];
+        if (lastInterestTxn) expectedAmount = lastInterestTxn.amount;
+      }
+      alerts.push({
+        assetId: asset.id, assetName: asset.name, accountId: asset.accountId, kind: 'Interest',
+        dueDate: sched.nextInterestDue, daysToNextInterest: sched.daysToNextInterest,
+        isOverdue: sched.interestOverdue, expectedAmount, currency: asset.currency||'INR'
+      });
+    } else if (asset.type==='rd'){
+      const sched = computeRdSchedule(asset);
+      if (!sched || sched.matured || !(sched.isDueSoon || sched.isOverdue)) continue;
+      const lastDeposit = state.transactions.filter(t=>t.assetId===asset.id && t.type==='deposit').sort((a,b)=>new Date(b.date)-new Date(a.date))[0];
+      alerts.push({
+        assetId: asset.id, assetName: asset.name, accountId: asset.accountId, kind: 'Deposit',
+        dueDate: sched.nextDepositDue, daysToNextInterest: sched.daysToNextDeposit,
+        isOverdue: sched.isOverdue, expectedAmount: lastDeposit ? lastDeposit.amount : null, currency: asset.currency||'INR'
+      });
+    } else if (asset.type==='fd'){
+      const sched = computeFdSchedule(asset);
+      if (!sched) continue;
+      // Maturity alert — relevant for every FD, cumulative or not, since deciding whether to
+      // renew or withdraw is the main thing to act on here.
+      if (!sched.maturedByTxn && (sched.maturitySoon || sched.maturityOverdue)){
+        alerts.push({
+          assetId: asset.id, assetName: asset.name, accountId: asset.accountId, kind: 'Maturity',
+          dueDate: sched.maturityDate, daysToNextInterest: sched.daysToMaturity,
+          isOverdue: sched.maturityOverdue, expectedAmount: null, currency: asset.currency||'INR'
+        });
+      }
+      // Periodic interest alert — only for the (uncommon) non-cumulative FD that has an
+      // interestFrequency set; ordinary cumulative FDs simply won't trigger this.
+      if (sched.interestDueSoon || sched.interestOverdue){
+        const lastInterestTxn = state.transactions.filter(t=>t.assetId===asset.id && t.type==='interest_credit').sort((a,b)=>new Date(b.date)-new Date(a.date))[0];
+        alerts.push({
+          assetId: asset.id, assetName: asset.name, accountId: asset.accountId, kind: 'Interest',
+          dueDate: sched.nextInterestDue, daysToNextInterest: sched.daysToNextInterest,
+          isOverdue: sched.interestOverdue, expectedAmount: lastInterestTxn ? lastInterestTxn.amount : null, currency: asset.currency||'INR'
+        });
+      }
+    }
+  }
+  return alerts.sort((a,b)=>a.daysToNextInterest-b.daysToNextInterest);
+}
+
+function ensureNotificationSettings(){
+  ensureSettings();
+  if (state.settings.interestNotificationsEnabled === undefined) state.settings.interestNotificationsEnabled = false;
+  if (state.settings.lastInterestNotificationCheck === undefined) state.settings.lastInterestNotificationCheck = null;
+}
+async function enableInterestNotifications(){
+  ensureNotificationSettings();
+  if (!('Notification' in window)){ showToast('This browser does not support notifications'); return; }
+  const permission = await Notification.requestPermission();
+  if (permission !== 'granted'){ showToast('Notification permission was not granted'); return; }
+  state.settings.interestNotificationsEnabled = true;
+  scheduleLocalStorageSave();
+  showToast('Notifications enabled for upcoming interest payments');
+  renderInterestAlerts();
+  checkAndShowInterestNotifications(true); // fire immediately once, so enabling feels responsive
+}
+function disableInterestNotifications(){
+  ensureNotificationSettings();
+  state.settings.interestNotificationsEnabled = false;
+  scheduleLocalStorageSave();
+  renderInterestAlerts();
+}
+// Shows an actual OS-level browser notification once per day (while the app is open) if enabled
+// and there's anything due/overdue — this is a client-side, "while you have the app open" style
+// reminder rather than a true background push notification, since that needs server-side push
+// infrastructure this local-first app deliberately doesn't have.
+function checkAndShowInterestNotifications(force){
+  ensureNotificationSettings();
+  if (!state.settings.interestNotificationsEnabled) return;
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  if (!force && state.settings.lastInterestNotificationCheck === todayISO()) return; // already checked today
+  state.settings.lastInterestNotificationCheck = todayISO();
+  scheduleLocalStorageSave();
+  const alerts = computeUpcomingInterestAlerts();
+  if (alerts.length===0) return;
+  const overdueCount = alerts.filter(a=>a.isOverdue).length;
+  const title = overdueCount>0 ? `⚠ ${overdueCount} payment(s) overdue` : `🔔 ${alerts.length} payment(s) coming up`;
+  const body = alerts.slice(0,3).map(a=>
+    `${a.assetName} (${a.kind}): ${a.isOverdue?'was due':'due'} ${fmtDate(a.dueDate)}${a.expectedAmount?` (~${fmtMoney(a.expectedAmount)})`:''}`
+  ).join('\n') + (alerts.length>3 ? `\n+${alerts.length-3} more` : '');
+  try{ new Notification(title, { body, icon: './icon-192.png' }); }catch(e){ console.error('Notification failed', e); }
+}
+function renderInterestAlerts(){
+  ensureNotificationSettings();
+  const el = document.getElementById('interest-alerts-box');
+  if (!el) return;
+  const alerts = computeUpcomingInterestAlerts();
+  const notifBtn = state.settings.interestNotificationsEnabled
+    ? `<button class="btn btn-sm" onclick="disableInterestNotifications()">🔕 Turn off notifications</button>`
+    : `<button class="btn btn-sm btn-primary" onclick="enableInterestNotifications()">🔔 Enable notifications</button>`;
+  if (alerts.length===0){
+    el.style.display = 'none';
+    return;
+  }
+  el.style.display = 'block';
+  const overdueCount = alerts.filter(a=>a.isOverdue).length;
+  const interestCount = alerts.filter(a=>a.kind==='Interest').length;
+  const depositCount = alerts.filter(a=>a.kind==='Deposit').length;
+  const maturityCount = alerts.filter(a=>a.kind==='Maturity').length;
+  const summaryParts = [];
+  if (interestCount) summaryParts.push(`${interestCount} interest payment(s)`);
+  if (depositCount) summaryParts.push(`${depositCount} RD deposit(s)`);
+  if (maturityCount) summaryParts.push(`${maturityCount} maturing`);
+  el.innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+      <div style="font-weight:700; font-size:13.5px; color:${overdueCount>0?'var(--bad)':'var(--warn-text)'};">
+        ${overdueCount>0 ? '⚠ ' : '🔔 '}${summaryParts.join(' and ')} ${overdueCount>0?'overdue':'coming up'}
+      </div>
+      ${notifBtn}
+    </div>
+    <div style="margin-top:10px; display:flex; flex-direction:column; gap:8px;">
+      ${alerts.map(a=>{
+        const txnType = a.kind==='Deposit' ? 'deposit' : a.kind==='Maturity' ? 'maturity' : 'interest_credit';
+        const btnLabel = a.kind==='Deposit' ? 'deposit' : a.kind==='Maturity' ? 'maturity' : 'payment';
+        return `
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; padding:8px 10px; background:rgba(${a.isOverdue?'248,113,113':'251,191,36'},.08); border-radius:8px;">
+          <div>
+            <div style="font-weight:600; font-size:13px;">${a.assetName} ${accountTag(a.accountId)} <span class="fx-hint">${a.kind}</span></div>
+            <div class="fx-hint">${a.isOverdue?'Was due':'Due'} ${fmtDate(a.dueDate)} · ${a.isOverdue?`${Math.abs(a.daysToNextInterest)} day(s) overdue`:`in ${a.daysToNextInterest} day(s)`}</div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-weight:700; font-size:13px;">${a.expectedAmount?fmtMoney(a.expectedAmount):'Amount unknown'}</div>
+            <button class="btn btn-sm btn-primary" style="margin-top:4px;" onclick="openTxnModal(); document.getElementById('txn-asset').value='${a.assetId}'; onTxnAssetChange(); document.getElementById('txn-type').value='${txnType}'; onTxnTypeChange();">+ Log ${btnLabel}</button>
+          </div>
+        </div>
+      `;}).join('')}
+    </div>
+  `;
+}
+
 function renderInsurancePage(){
   ensureInsurancesArray();
   const statsEl = document.getElementById('insurance-stats');
@@ -3347,10 +3671,28 @@ function renderAssetsPage(){
           elssLine = `<div class="native-amt">🔒 ${fmtMoney(lock.lockedValue)} locked${lock.nextUnlockDate?` · next unlock ${fmtDate(lock.nextUnlockDate)}`:''}${lock.unlockedValue>0?` · 🔓 ${fmtMoney(lock.unlockedValue)} free`:''}</div>`;
         }
       }
+      let bondLine = '';
+      if (a.type==='bond'){
+        const sched = computeBondSchedule(a);
+        if (sched && (sched.maturityDate || sched.nextInterestDue)){
+          const parts = [];
+          if (a.maturityDate) parts.push(`Matures ${fmtDate(a.maturityDate)}${sched.maturityOverdue?' ⚠':sched.maturitySoon?' 🗓':''}`);
+          if (sched.nextInterestDue) parts.push(`Next interest ${fmtDate(sched.nextInterestDue)}${sched.interestOverdue?' ⚠':sched.interestDueSoon?' 🗓':''}`);
+          bondLine = `<div class="native-amt">${parts.join(' · ')}</div>`;
+        }
+      } else if (a.type==='fd'){
+        const sched = computeFdSchedule(a);
+        if (sched && (sched.maturityDate || sched.nextInterestDue)){
+          const parts = [];
+          if (sched.maturityDate) parts.push(`Matures ${fmtDate(sched.maturityDate)}${sched.maturityOverdue?' ⚠':sched.maturitySoon?' 🗓':''}`);
+          if (sched.nextInterestDue) parts.push(`Next interest ${fmtDate(sched.nextInterestDue)}${sched.interestOverdue?' ⚠':sched.interestDueSoon?' 🗓':''}`);
+          bondLine = `<div class="native-amt">${parts.join(' · ')}</div>`;
+        }
+      }
       const acc = getAccount(a.accountId);
       const labelsLine = (a.labels && a.labels.length) ? `<div>${a.labels.map(l=>{ const c=getLabelColor(l); return `<span class="asset-label-chip-sm" style="background:${c}22; color:${c};" onclick="event.stopPropagation(); filterAssetsByLabel('${l.replace(/'/g,"\\'")}')">${l}</span>`; }).join('')}</div>` : '';
       return `<tr>
-        <td data-sort="${a.name.toLowerCase()}">${a.name}${elssLine}${labelsLine}</td>
+        <td data-sort="${a.name.toLowerCase()}">${a.name}${elssLine}${bondLine}${labelsLine}</td>
         <td data-sort="${acc?acc.name.toLowerCase():''}">${accountTag(a.accountId)}</td>
         <td data-sort="${assetTypeLabel(a)}"><span class="badge ${ASSET_TYPE_BADGE[a.type]}">${assetTypeLabel(a)}</span></td>
         <td data-sort="${UNIT_LESS_TYPES.includes(a.type)?-1:a.nav}">${UNIT_LESS_TYPES.includes(a.type)?'—':(CURRENCY_SYMBOLS[cur]||'₹')+fmtNum(a.nav,4)}</td>
@@ -3826,6 +4168,9 @@ function onAssetTypeChange(){
   document.getElementById('asset-nav-label').textContent = navLabel;
   document.getElementById('asset-facevalue-field').style.display = type==='bond' ? 'block' : 'none';
   document.getElementById('asset-coupon-field').style.display = type==='bond' ? 'block' : 'none';
+  document.getElementById('asset-maturity-date-field').style.display = (type==='bond'||type==='fd') ? 'block' : 'none';
+  document.getElementById('asset-interest-freq-field').style.display = (type==='bond'||type==='fd') ? 'block' : 'none';
+  document.getElementById('asset-interest-payment-date-field').style.display = (type==='bond'||type==='fd') ? 'block' : 'none';
   document.getElementById('asset-nps-tier-field').style.display = type==='nps' ? 'block' : 'none';
   document.getElementById('asset-amfi-field').style.display = MF_ASSET_TYPES.includes(type) ? 'block' : 'none';
   document.getElementById('asset-ticker-field').style.display = (type==='stock' || type==='us_stock') ? 'block' : 'none';
@@ -3920,6 +4265,9 @@ function openAssetModal(existing){
   document.getElementById('asset-nav').value = existing? (existing.nav||'') : '';
   document.getElementById('asset-facevalue').value = existing && existing.faceValue ? existing.faceValue : '';
   document.getElementById('asset-coupon').value = existing && existing.couponRate ? existing.couponRate : '';
+  document.getElementById('asset-maturity-date').value = existing && existing.maturityDate ? existing.maturityDate : '';
+  document.getElementById('asset-interest-freq').value = existing && existing.interestFrequency ? existing.interestFrequency : '';
+  document.getElementById('asset-interest-payment-date').value = existing && existing.interestPaymentDate ? existing.interestPaymentDate : '';
   document.getElementById('asset-nps-tier').value = existing && existing.npsTier ? existing.npsTier : 'tier1';
   document.getElementById('asset-amfi-code').value = existing && existing.amfiCode ? existing.amfiCode : '';
   document.getElementById('asset-ticker').value = existing && existing.tickerSymbol ? existing.tickerSymbol : '';
@@ -3957,6 +4305,10 @@ function saveAsset(){
   const nav = parseFloat(document.getElementById('asset-nav').value) || 0;
   const faceValue = parseFloat(document.getElementById('asset-facevalue').value) || null;
   const couponRate = parseFloat(document.getElementById('asset-coupon').value) || null;
+  const isBondOrFd = (type==='bond' || type==='fd');
+  const maturityDate = isBondOrFd ? (document.getElementById('asset-maturity-date').value || null) : null;
+  const interestFrequency = isBondOrFd ? (document.getElementById('asset-interest-freq').value || null) : null;
+  const interestPaymentDate = isBondOrFd ? (document.getElementById('asset-interest-payment-date').value || null) : null;
   const npsTier = document.getElementById('asset-nps-tier').value || 'tier1';
   const amfiCode = document.getElementById('asset-amfi-code').value.trim() || null;
   const tickerSymbol = document.getElementById('asset-ticker').value.trim() || null;
@@ -3966,7 +4318,7 @@ function saveAsset(){
   // catch a label still sitting in the input box that the person didn't press Enter on
   const strayLabel = document.getElementById('asset-labels-input').value.trim();
   if (strayLabel) addAssetLabel(strayLabel);
-  const asset = { id: id||uid('asset'), name, type, nav, faceValue, couponRate, npsTier, amfiCode, tickerSymbol, accountId, currency, labels: currentAssetLabels.slice() };
+  const asset = { id: id||uid('asset'), name, type, nav, faceValue, couponRate, maturityDate, interestFrequency, interestPaymentDate, npsTier, amfiCode, tickerSymbol, accountId, currency, labels: currentAssetLabels.slice() };
   const idx = state.assets.findIndex(a=>a.id===asset.id);
   if (idx>=0) state.assets[idx] = {...state.assets[idx], ...asset}; else state.assets.push(asset);
   closeModal('modal-asset');
@@ -6630,6 +6982,7 @@ function renderAll(){
   renderCurrencyToggle();
   renderThemeToggleUI();
   renderDashboard();
+  renderInterestAlerts();
   renderTransactionsPage();
   renderAssetsPage();
   renderAssetTypesPage();
@@ -6670,6 +7023,7 @@ if (isGdrivePersistentMode()){
 } else {
   attemptGdriveAutoReconnect(30);
 }
+checkAndShowInterestNotifications(false);
 </script>
 
 
