@@ -483,6 +483,18 @@ tbody tr:hover{background:rgba(var(--tint-rgb),.02);}
 }
 .label-filter-pill.active{background:var(--accent-soft); color:var(--accent); border-color:rgba(45,212,191,.3);}
 
+.label-picker-box{
+  display:flex; flex-wrap:wrap; gap:6px; padding:10px; border-radius:10px;
+  border:1px solid var(--card-border); background:var(--bg-soft); margin-top:8px;
+}
+.label-picker-empty{font-size:12px; color:var(--text-faint);}
+.label-picker-pill{
+  display:inline-flex; align-items:center; gap:5px; padding:5px 11px; border-radius:999px;
+  font-size:12px; font-weight:600; cursor:pointer; border:1.5px solid transparent; transition:.15s;
+}
+.label-picker-pill .check{font-size:10px; opacity:.5;}
+.label-picker-pill.selected .check{opacity:1;}
+
 .pill-toggle{display:flex; gap:6px; background:var(--bg-soft); padding:4px; border-radius:10px; border:1px solid var(--card-border); width:fit-content;}
 .pill-toggle button{border:none; background:transparent; color:var(--text-dim); padding:6px 12px; border-radius:8px; cursor:pointer; font-size:12.5px; font-weight:600;}
 .pill-toggle button.active{background:var(--accent); color:#04121a;}
@@ -1154,9 +1166,19 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
       <div class="card">
         <div class="card-title">Set up once, stays connected indefinitely*</div>
         <p style="color:var(--text-dim); font-size:12.5px;">Deploy the Worker script from your download package (<code>gdrive-token-proxy-worker.js</code>) to <a href="https://dash.cloudflare.com/" target="_blank" rel="noopener">Cloudflare Workers</a> (free tier) — the file has full step-by-step setup comments at the top. Then paste its URL below and click Enable.</p>
+
+        <div class="warn-box" style="margin-top:10px; margin-bottom:10px;">⚠ Getting <strong>"Error 400: redirect_uri_mismatch"</strong>? Google requires the redirect URI below to match, character-for-character, an entry in your OAuth Client's "Authorized redirect URIs" in Google Cloud Console — including trailing slashes and capitalization. Copy the exact value below rather than typing it by hand; a mismatched trailing slash is the single most common cause of this error.</div>
+        <div class="field">
+          <label>Your exact redirect URI (add this to Google Cloud Console → Authorized redirect URIs)</label>
+          <div style="display:flex; gap:8px;">
+            <input type="text" id="gdrive-redirect-uri-display" readonly style="flex:1; font-family:monospace; font-size:12px;">
+            <button type="button" class="btn btn-sm" onclick="copyGdriveRedirectUri()">📋 Copy</button>
+          </div>
+        </div>
+
         <div class="field" style="margin-top:8px;">
           <label>Token Proxy URL</label>
-          <input type="text" id="gdrive-proxy-url" oninput="saveGdriveProxyUrl()" placeholder="https://your-worker-name.your-subdomain.workers.dev">
+          <input type="text" id="gdrive-proxy-url" onchange="saveGdriveProxyUrl()" placeholder="https://your-worker-name.your-subdomain.workers.dev">
         </div>
         <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:10px;">
           <button class="btn btn-primary" id="btn-gdrive-persist-enable" onclick="enableGdrivePersistence()">Enable persistent connection</button>
@@ -1185,7 +1207,7 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
         <p style="color:var(--text-dim); font-size:12.5px;">Deploy the Worker script from your download package (<code>stock-price-proxy-worker.js</code>) to <a href="https://dash.cloudflare.com/" target="_blank" rel="noopener">Cloudflare Workers</a> (free tier) — full setup steps are in the comments at the top of the file. Then paste its URL below.</p>
         <div class="field" style="margin-top:8px;">
           <label>Stock Price Proxy URL</label>
-          <input type="text" id="stock-proxy-url" oninput="saveStockProxyUrl()" placeholder="https://your-worker-name.your-subdomain.workers.dev">
+          <input type="text" id="stock-proxy-url" onchange="saveStockProxyUrl()" placeholder="https://your-worker-name.your-subdomain.workers.dev">
         </div>
       </div>
       <div class="field-hint" style="margin-top:10px;">Once either is set, add a ticker symbol to each stock in its Edit form (e.g. <code>RELIANCE.NS</code> for NSE, <code>SYMBOL.BO</code>/<code>.BSE</code> for BSE, or just <code>AAPL</code> for US stocks) to enable "Fetch Latest Price" on the NAV Update page. If both are configured, Alpha Vantage is tried first since it needs no deployment, falling back to your Worker if that fails. Either way, treat fetched prices as indicative, same as any free quote source.</div>
@@ -1423,7 +1445,8 @@ textarea{resize:vertical; min-height:90px; font-family:ui-monospace,Consolas,mon
         <input type="text" id="asset-labels-input" list="asset-labels-datalist" placeholder="Type a label and press Enter…" onkeydown="handleLabelInputKeydown(event)">
       </div>
       <datalist id="asset-labels-datalist"></datalist>
-      <div class="field-hint">Your own tags — e.g. "High Risk", "Emergency Fund", "Tax Saver", "Long Term". Press Enter or comma to add.</div>
+      <div class="field-hint">Your own tags — e.g. "High Risk", "Emergency Fund", "Tax Saver", "Long Term". Press Enter or comma to add, or pick from your existing labels below.</div>
+      <div class="label-picker-box" id="asset-labels-picker"></div>
     </div>
     <div class="modal-actions">
       <button class="btn" onclick="closeModal('modal-asset')">Cancel</button>
@@ -2596,9 +2619,10 @@ function renderTxnTable(txns, showActions=true, tableWrapId='txn-table'){
         <td data-sort="${amountVal}">${t.type==='bonus'||t.type==='split' ? '—' : fmtMoney(t.amount, cur)}</td>
         <td data-sort="${t.units||0}">${t.type==='split' ? `1 : ${fmtNum(t.splitRatio,2)}` : (t.units?fmtNum(t.units,3):'—')}</td>
         <td data-sort="${t.navPrice||0}">${t.navPrice?sym+fmtNum(t.navPrice,4):'—'}</td>
-        ${showActions?`<td>
-          <button class="icon-btn" onclick="editTxn('${t.id}')">✎</button>
-          <button class="icon-btn" onclick="deleteTxn('${t.id}')">🗑</button>
+        ${showActions?`<td style="white-space:nowrap;">
+          <button class="icon-btn" onclick="editTxn('${t.id}')" title="Edit">✎</button>
+          <button class="icon-btn" onclick="duplicateTxn('${t.id}')" title="Duplicate">⧉</button>
+          <button class="icon-btn" onclick="deleteTxn('${t.id}')" title="Delete">🗑</button>
         </td>`:''}
       </tr>`;
     }).join('')}
@@ -2845,6 +2869,18 @@ function saveTxn(){
 function editTxn(id){
   const t = state.transactions.find(x=>x.id===id);
   if (t) openTxnModal(t);
+}
+// Pre-fills the Add Transaction modal from an existing transaction — same asset, type, amount,
+// units, NAV, tax, currency/rate choice, everything — but as a brand-new transaction (not an
+// edit of the original), with today's date substituted in since that's the usual reason to
+// duplicate one (e.g. "another month's SIP just like this one").
+function duplicateTxn(id){
+  const original = state.transactions.find(t=>t.id===id);
+  if (!original) return;
+  const clone = { ...original, date: todayISO() };
+  openTxnModal(clone);
+  document.getElementById('txn-id').value = ''; // ensure Save creates a new transaction rather than overwriting the original
+  document.getElementById('txn-modal-title').textContent = 'Add transaction (duplicated)';
 }
 function deleteTxn(id){
   if (!confirm('Delete this transaction?')) return;
@@ -3817,6 +3853,33 @@ function renderAssetLabelChips(){
     const color = getLabelColor(label);
     return `<span class="label-chip" style="background:${color}22; color:${color};">${label}<span class="x" onclick="removeAssetLabel(${i})">✕</span></span>`;
   }).join('');
+  renderAssetLabelPicker();
+}
+// Browsable multi-select picker for labels you've already created (via Manage Labels or typed
+// before) — click to toggle a label on/off for this asset without needing to type/remember its
+// exact name. Complements the tag-input above, which is for creating brand-new labels.
+function renderAssetLabelPicker(){
+  const pickerEl = document.getElementById('asset-labels-picker');
+  if (!pickerEl) return;
+  ensureLabelsArray();
+  const allLabels = [...state.labels].sort((a,b)=>a.name.localeCompare(b.name));
+  if (allLabels.length===0){
+    pickerEl.innerHTML = `<span class="label-picker-empty">No labels created yet — type one above, or add some in Manage Labels.</span>`;
+    return;
+  }
+  pickerEl.innerHTML = allLabels.map(l=>{
+    const isSelected = currentAssetLabels.some(x=>x.toLowerCase()===l.name.toLowerCase());
+    const style = isSelected
+      ? `background:${l.color}22; color:${l.color}; border-color:${l.color}66;`
+      : `background:var(--card); color:var(--text-dim); border-color:var(--card-border);`;
+    return `<span class="label-picker-pill ${isSelected?'selected':''}" style="${style}" onclick="toggleAssetLabelPick('${l.name.replace(/'/g,"\\'")}')"><span class="check">${isSelected?'✓':'+'}</span>${l.name}</span>`;
+  }).join('');
+}
+function toggleAssetLabelPick(name){
+  const idx = currentAssetLabels.findIndex(l=>l.toLowerCase()===name.toLowerCase());
+  if (idx>=0) currentAssetLabels.splice(idx,1);
+  else currentAssetLabels.push(name);
+  renderAssetLabelChips();
 }
 function addAssetLabel(raw){
   const label = raw.trim();
@@ -5449,7 +5512,9 @@ function saveGdriveClientId(){
    ========================================================================== */
 function saveGdriveProxyUrl(){
   ensureSettings();
-  state.settings.gdriveProxyUrl = document.getElementById('gdrive-proxy-url').value.trim().replace(/\/$/,'');
+  const normalized = normalizeProxyUrl(document.getElementById('gdrive-proxy-url').value);
+  state.settings.gdriveProxyUrl = normalized;
+  document.getElementById('gdrive-proxy-url').value = normalized;
   scheduleLocalStorageSave();
 }
 
@@ -5459,9 +5524,22 @@ function saveGdriveProxyUrl(){
    above for why this can't be a direct no-backend browser fetch the way MF
    NAVs and FX rates are.
    ========================================================================== */
+// Defends against a real, easy-to-hit mistake: if a pasted proxy URL is missing its http(s)://
+// prefix (e.g. the domain was copied without it), fetch() treats it as a RELATIVE path and
+// resolves it against FinPlan's own page URL instead of the intended external host — which
+// looks exactly like "the proxy URL got concatenated with the app's own URL". Auto-prepending
+// https:// here removes that failure mode at the source rather than relying on the person to
+// always paste it exactly right.
+function normalizeProxyUrl(raw){
+  let url = (raw||'').trim().replace(/\/+$/,'');
+  if (url && !/^https?:\/\//i.test(url)) url = 'https://' + url;
+  return url;
+}
 function saveStockProxyUrl(){
   ensureSettings();
-  state.settings.stockPriceProxyUrl = document.getElementById('stock-proxy-url').value.trim().replace(/\/$/,'');
+  const normalized = normalizeProxyUrl(document.getElementById('stock-proxy-url').value);
+  state.settings.stockPriceProxyUrl = normalized;
+  document.getElementById('stock-proxy-url').value = normalized; // reflect back what will actually be used
   scheduleLocalStorageSave();
 }
 function saveAlphaVantageApiKey(){
@@ -5555,6 +5633,17 @@ function renderGdrivePersistUI(){
     : 'Not enabled — using the session-only connection above.';
   if (enableBtn) enableBtn.style.display = active ? 'none' : 'inline-flex';
   if (revokeBtn) revokeBtn.style.display = active ? 'inline-flex' : 'none';
+  // Computed identically to how enableGdrivePersistence() actually builds redirect_uri, so what's
+  // shown here is guaranteed to be the exact value Google will receive — copy it verbatim into
+  // Google Cloud Console to avoid the classic redirect_uri_mismatch (usually a trailing-slash or
+  // hand-typed-path mismatch between what's registered and what the app actually sends).
+  const redirectUriEl = document.getElementById('gdrive-redirect-uri-display');
+  if (redirectUriEl) redirectUriEl.value = window.location.origin + window.location.pathname;
+}
+function copyGdriveRedirectUri(){
+  const el = document.getElementById('gdrive-redirect-uri-display');
+  el.select();
+  navigator.clipboard && navigator.clipboard.writeText ? navigator.clipboard.writeText(el.value).then(()=>showToast('Copied — paste this into Google Cloud Console')) : document.execCommand('copy');
 }
 
 // Kicks off Google's "authorization code" consent flow (full-page redirect, not a popup) —

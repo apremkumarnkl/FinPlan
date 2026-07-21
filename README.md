@@ -118,14 +118,18 @@ Secret; it never sees your FinPlan data.
      `https://yourname.github.io`, no trailing slash, no path).
 4. **Deploy**, then copy the Worker's URL (looks like
    `https://finplan-proxy.yoursubdomain.workers.dev`).
-5. Back in Google Cloud Console, edit your OAuth Client and add your exact
-   FinPlan page URL (e.g. `https://yourname.github.io/finplan.html`) under
-   **"Authorized redirect URIs"** — this is in *addition* to the
-   "Authorized JavaScript origins" entry from Part 2.
-6. In FinPlan, go to **Settings → Google Drive backup → "3. Optional: truly
-   persistent connection"**, paste the Worker's URL into **Token Proxy
-   URL**, and click **Enable persistent connection**. You'll be sent to
-   Google's consent screen (a full page redirect, not a popup) and back.
+5. In FinPlan, go to **Settings → Google Drive backup → "3. Optional: truly
+   persistent connection"** and copy the **exact redirect URI** shown there
+   (there's a Copy button — use it rather than typing the URL by hand).
+6. Back in Google Cloud Console, edit your OAuth Client and paste that exact
+   value under **"Authorized redirect URIs"** — this is in *addition* to the
+   "Authorized JavaScript origins" entry from Part 2. If you ever see
+   **"Error 400: redirect_uri_mismatch"**, it means what's registered here
+   doesn't character-for-character match what FinPlan actually sent —
+   usually a trailing slash or a hand-typed path that's slightly off.
+7. Paste the Worker's URL into **Token Proxy URL**, and click **Enable
+   persistent connection**. You'll be sent to Google's consent screen (a
+   full page redirect, not a popup) and back.
 
 From then on, FinPlan refreshes its own connection through your Worker —
 no popup, no active browser session required, survives closing the app
