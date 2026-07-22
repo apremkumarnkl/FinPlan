@@ -3497,9 +3497,10 @@ async function enableInterestNotifications(){
   if (permission !== 'granted'){ showToast('Notification permission was not granted'); return; }
   state.settings.interestNotificationsEnabled = true;
   scheduleLocalStorageSave();
-  showToast('Notifications enabled for upcoming interest payments');
+  showToast('Notifications on — reliably checked once/day whenever you open or return to FinPlan; a true background alert with the app fully closed is best-effort and browser-dependent');
   renderInterestAlerts();
   checkAndShowInterestNotifications(true); // fire immediately once, so enabling feels responsive
+  registerPeriodicPaymentSync(); // best-effort — silently no-ops if the browser doesn't support/grant it
 }
 function disableInterestNotifications(){
   ensureNotificationSettings();
@@ -3527,11 +3528,49 @@ function checkAndShowInterestNotifications(force){
   ).join('\n') + (alerts.length>3 ? `\n+${alerts.length-3} more` : '');
   try{ new Notification(title, { body, icon: './icon-192.png' }); }catch(e){ console.error('Notification failed', e); }
 }
+// Service Workers can't read localStorage (it's window/document-only), so if we want the
+// Periodic Background Sync handler in sw.js to be able to show anything more useful than a
+// totally generic "check the app" notification, it needs its OWN readable copy of the current
+// alert summary — Cache Storage is the one persistence mechanism both contexts share. This is
+// necessarily a snapshot as of the last time the app was actually open, not a live computation.
+function snapshotAlertsForBackgroundSync(alerts){
+  if (!('caches' in window)) return;
+  ensureNotificationSettings();
+  const summary = {
+    enabled: !!state.settings.interestNotificationsEnabled,
+    generatedAt: new Date().toISOString(),
+    overdueCount: alerts.filter(a=>a.isOverdue).length,
+    total: alerts.length,
+    items: alerts.slice(0,5).map(a=>({ name:a.assetName, kind:a.kind, isOverdue:a.isOverdue, dueDate:a.dueDate }))
+  };
+  caches.open('finplan-alerts-v1').then(cache=>{
+    cache.put('/__alerts-summary', new Response(JSON.stringify(summary), { headers:{'Content-Type':'application/json'} }));
+  }).catch(()=>{});
+}
+// Best-effort attempt to register Periodic Background Sync so a reminder can appear even when
+// the app itself isn't open. This is genuinely best-effort, not a guarantee: it's currently only
+// implemented in Chromium browsers, only for an installed PWA, the browser decides both whether
+// to grant it at all (based on how often you actually use the app) and how often it actually
+// fires (commonly closer to once a day at best, sometimes far less), and Safari/Firefox don't
+// support it at all — on those, the checks above (on open, on returning to the tab, hourly while
+// open) are what you actually get.
+async function registerPeriodicPaymentSync(){
+  try{
+    if (!('serviceWorker' in navigator) || !('PeriodicSyncManager' in window)) return;
+    const registration = await navigator.serviceWorker.ready;
+    if (!registration.periodicSync) return;
+    const status = await navigator.permissions.query({ name: 'periodic-background-sync' });
+    if (status.state !== 'granted') return;
+    await registration.periodicSync.register('finplan-daily-payment-check', { minInterval: 20*60*60*1000 }); // ask for ~daily; the browser may grant less often
+  }catch(e){ /* unsupported or denied — silently rely on the foreground checks instead */ }
+}
+
 function renderInterestAlerts(){
   ensureNotificationSettings();
   const el = document.getElementById('interest-alerts-box');
   if (!el) return;
   const alerts = computeUpcomingInterestAlerts();
+  snapshotAlertsForBackgroundSync(alerts);
   const notifBtn = state.settings.interestNotificationsEnabled
     ? `<button class="btn btn-sm" onclick="disableInterestNotifications()">🔕 Turn off notifications</button>`
     : `<button class="btn btn-sm btn-primary" onclick="enableInterestNotifications()">🔔 Enable notifications</button>`;
@@ -3548,29 +3587,37 @@ function renderInterestAlerts(){
   if (interestCount) summaryParts.push(`${interestCount} interest payment(s)`);
   if (depositCount) summaryParts.push(`${depositCount} RD deposit(s)`);
   if (maturityCount) summaryParts.push(`${maturityCount} maturing`);
+  // Was this accordion already open before the last re-render? Default to open the very first
+  // time (these are meant to be noticed), but respect whatever the person left it at afterward.
+  const wasOpen = document.getElementById('interest-alerts-body') ? document.getElementById('interest-alerts-body').classList.contains('open') : true;
   el.innerHTML = `
-    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
-      <div style="font-weight:700; font-size:13.5px; color:${overdueCount>0?'var(--bad)':'var(--warn-text)'};">
-        ${overdueCount>0 ? '⚠ ' : '🔔 '}${summaryParts.join(' and ')} ${overdueCount>0?'overdue':'coming up'}
-      </div>
-      ${notifBtn}
+    <div class="goal-collapse-head ${wasOpen?'open':''}" style="border-top:none; margin-top:0; padding-top:0; justify-content:space-between;" onclick="toggleGoalCollapse(this, 'interest-alerts-body')">
+      <span style="display:flex; align-items:center; gap:8px;">
+        <span class="chev">▸</span>
+        <span style="color:${overdueCount>0?'var(--bad)':'var(--warn-text)'};">
+          ${overdueCount>0 ? '⚠ ' : '🔔 '}${summaryParts.join(' and ')} ${overdueCount>0?'overdue':'coming up'}
+        </span>
+      </span>
+      <span onclick="event.stopPropagation();">${notifBtn}</span>
     </div>
-    <div style="margin-top:10px; display:flex; flex-direction:column; gap:8px;">
-      ${alerts.map(a=>{
-        const txnType = a.kind==='Deposit' ? 'deposit' : a.kind==='Maturity' ? 'maturity' : 'interest_credit';
-        const btnLabel = a.kind==='Deposit' ? 'deposit' : a.kind==='Maturity' ? 'maturity' : 'payment';
-        return `
-        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; padding:8px 10px; background:rgba(${a.isOverdue?'248,113,113':'251,191,36'},.08); border-radius:8px;">
-          <div>
-            <div style="font-weight:600; font-size:13px;">${a.assetName} ${accountTag(a.accountId)} <span class="fx-hint">${a.kind}</span></div>
-            <div class="fx-hint">${a.isOverdue?'Was due':'Due'} ${fmtDate(a.dueDate)} · ${a.isOverdue?`${Math.abs(a.daysToNextInterest)} day(s) overdue`:`in ${a.daysToNextInterest} day(s)`}</div>
+    <div class="goal-collapse-body ${wasOpen?'open':''}" id="interest-alerts-body">
+      <div style="display:flex; flex-direction:column; gap:8px;">
+        ${alerts.map(a=>{
+          const txnType = a.kind==='Deposit' ? 'deposit' : a.kind==='Maturity' ? 'maturity' : 'interest_credit';
+          const btnLabel = a.kind==='Deposit' ? 'deposit' : a.kind==='Maturity' ? 'maturity' : 'payment';
+          return `
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; padding:8px 10px; background:rgba(${a.isOverdue?'248,113,113':'251,191,36'},.08); border-radius:8px;">
+            <div>
+              <div style="font-weight:600; font-size:13px;">${a.assetName} ${accountTag(a.accountId)} <span class="fx-hint">${a.kind}</span></div>
+              <div class="fx-hint">${a.isOverdue?'Was due':'Due'} ${fmtDate(a.dueDate)} · ${a.isOverdue?`${Math.abs(a.daysToNextInterest)} day(s) overdue`:`in ${a.daysToNextInterest} day(s)`}</div>
+            </div>
+            <div style="text-align:right;">
+              <div style="font-weight:700; font-size:13px;">${a.expectedAmount?fmtMoney(a.expectedAmount):'Amount unknown'}</div>
+              <button class="btn btn-sm btn-primary" style="margin-top:4px;" onclick="openTxnModal(); document.getElementById('txn-asset').value='${a.assetId}'; onTxnAssetChange(); document.getElementById('txn-type').value='${txnType}'; onTxnTypeChange();">+ Log ${btnLabel}</button>
+            </div>
           </div>
-          <div style="text-align:right;">
-            <div style="font-weight:700; font-size:13px;">${a.expectedAmount?fmtMoney(a.expectedAmount):'Amount unknown'}</div>
-            <button class="btn btn-sm btn-primary" style="margin-top:4px;" onclick="openTxnModal(); document.getElementById('txn-asset').value='${a.assetId}'; onTxnAssetChange(); document.getElementById('txn-type').value='${txnType}'; onTxnTypeChange();">+ Log ${btnLabel}</button>
-          </div>
-        </div>
-      `;}).join('')}
+        `;}).join('')}
+      </div>
     </div>
   `;
 }
@@ -7024,6 +7071,15 @@ if (isGdrivePersistentMode()){
   attemptGdriveAutoReconnect(30);
 }
 checkAndShowInterestNotifications(false);
+// Catch more real-world opportunities for the once-a-day check to actually fire — not just the
+// initial page load, but every time the app/tab comes back into view, and periodically while it
+// stays open — so a day-rollover during a long background session still gets noticed without
+// needing the user to fully reopen the app.
+document.addEventListener('visibilitychange', ()=>{
+  if (document.visibilityState === 'visible') checkAndShowInterestNotifications(false);
+});
+setInterval(()=>checkAndShowInterestNotifications(false), 60*60*1000); // hourly safety-net check
+registerPeriodicPaymentSync(); // best-effort background attempt — see function comment for its real limits
 </script>
 
 
